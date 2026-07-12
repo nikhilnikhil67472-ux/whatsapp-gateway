@@ -1,7 +1,38 @@
-import { WhatsAppEngineManager } from '../lib/whatsapp-engine/manager';
-import { db } from '../lib/db/sqlite';
+import fs from 'fs';
+import path from 'path';
 
 const POLL_INTERVAL_MS = 5000;
+
+function loadLocalEnv() {
+  for (const fileName of ['.env.local', '.env']) {
+    const envPath = path.join(process.cwd(), fileName);
+    if (!fs.existsSync(envPath)) continue;
+
+    const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const separatorIndex = trimmed.indexOf('=');
+      if (separatorIndex === -1) continue;
+
+      const key = trimmed.slice(0, separatorIndex).trim();
+      const rawValue = trimmed.slice(separatorIndex + 1).trim();
+      if (!key || process.env[key] !== undefined) continue;
+
+      process.env[key] = rawValue.replace(/^['"]|['"]$/g, '');
+    }
+  }
+}
+
+loadLocalEnv();
+
+const [{ WhatsAppEngineManager }, { db }] = await Promise.all([
+  import('../lib/whatsapp-engine/manager'),
+  import('../lib/db/sqlite'),
+]);
+
+console.log(`[worker] APP_BASE_URL=${process.env.APP_BASE_URL || '(not set)'}`);
 
 const STARTABLE_STATUSES = new Set([
   'created',
