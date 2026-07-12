@@ -58,6 +58,22 @@ function inflateAiRun(row: any) {
   return row ? { ...row, response_payload: parseJson(row.response_payload, null) } : null;
 }
 
+function inflateOutbound(row: any) {
+  return row || null;
+}
+
+function ensureColumn(tableName: string, columnName: string, definition: string) {
+  const columns = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === columnName)) return;
+  try {
+    sqlite.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`).run();
+  } catch (err: any) {
+    if (!String(err.message || '').includes('duplicate column name')) {
+      throw err;
+    }
+  }
+}
+
 export function initDb() {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS whatsapp_instances (
@@ -163,7 +179,15 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_conversations_instance_last ON conversations(instance_id, last_message_at DESC);
     CREATE INDEX IF NOT EXISTS idx_logs_instance_received ON whatsapp_event_logs(instance_id, received_at DESC);
     CREATE INDEX IF NOT EXISTS idx_messages_history ON messages(instance_id, remote_jid, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_outbound_status_created ON outbound_messages(status, created_at ASC);
   `);
+
+  ensureColumn('outbound_messages', 'media_type', 'TEXT');
+  ensureColumn('outbound_messages', 'mime_type', 'TEXT');
+  ensureColumn('outbound_messages', 'quoted_message_id', 'TEXT');
+  ensureColumn('outbound_messages', 'error_message', 'TEXT');
+  ensureColumn('outbound_messages', 'sent_at', 'TEXT');
+  ensureColumn('outbound_messages', 'updated_at', 'TEXT');
 }
 
 initDb();
@@ -352,10 +376,76 @@ export const db = {
   },
 
   addOutboundMessage(data: Record<string, any>) {
+    const ts = now();
     sqlite.prepare(`
-      INSERT INTO outbound_messages (id, instance_id, conversation_id, remote_jid, reply_type, text_content, media_url, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id(), data.instance_id, data.conversation_id || null, data.remote_jid, data.reply_type || null, data.text_content || null, data.media_url || null, data.status || 'sent', now());
+      INSERT INTO outbound_messages (
+        id, instance_id, conversation_id, remote_jid, reply_type, text_content,
+        media_url, media_type, mime_type, quoted_message_id, status,
+        error_message, sent_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      data.id || id(),
+      data.instance_id,
+      data.conversation_id || null,
+      data.remote_jid,
+      data.reply_type || data.type || null,
+      data.text_content || data.text || null,
+      data.media_url || data.mediaUrl || null,
+      data.media_type || data.mediaType || null,
+      data.mime_type || data.mimeType || null,
+      data.quoted_message_id || data.quotedMessageId || null,
+      data.status || 'sent',
+      data.error_message || null,
+      data.sent_at || ((data.status || 'sent') === 'sent' ? ts : null),
+      data.created_at || ts,
+      ts,
+    );
+  },
+
+  enqueueOutboundMessage(data: Record<string, any>) {
+    const outboundId = data.id || id();
+    this.addOutboundMessage({
+      ...data,
+      id: outboundId,
+      status: 'pending',
+      sent_at: null,
+    });
+    return outboundId;
+  },
+
+  listPendingOutboundMessages(limit = 20) {
+    return sqlite.prepare(`
+      SELECT * FROM outbound_messages
+      WHERE status = 'pending'
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).all(limit).map(inflateOutbound);
+  },
+
+  markOutboundMessageSending(outboundId: string) {
+    sqlite.prepare(`
+      UPDATE outbound_messages
+      SET status = 'sending', updated_at = ?
+      WHERE id = ? AND status = 'pending'
+    `).run(now(), outboundId);
+  },
+
+  markOutboundMessageSent(outboundId: string) {
+    const ts = now();
+    sqlite.prepare(`
+      UPDATE outbound_messages
+      SET status = 'sent', sent_at = ?, updated_at = ?, error_message = NULL
+      WHERE id = ?
+    `).run(ts, ts, outboundId);
+  },
+
+  markOutboundMessageFailed(outboundId: string, errorMessage: string) {
+    sqlite.prepare(`
+      UPDATE outbound_messages
+      SET status = 'failed', error_message = ?, updated_at = ?
+      WHERE id = ?
+    `).run(errorMessage, now(), outboundId);
   },
 
   createAiRun(data: Record<string, any>) {

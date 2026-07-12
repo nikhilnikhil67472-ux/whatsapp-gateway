@@ -1,0 +1,34 @@
+{
+  "name": "n8n-nodes-whatsapp-gateway",
+  "version": "0.1.0",
+  "description": "n8n node for sending WhatsApp messages through WhatsApp AI Gateway",
+  "keywords": [
+    "n8n-community-node-package",
+    "whatsapp",
+    "gateway",
+    "baileys"
+  ],
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-assets.cjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/WhatsAppGatewayApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/WhatsAppGateway/WhatsAppGateway.node.js"
+    ]
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

@@ -41,6 +41,9 @@ const activeOperations = new Set<string>();
 type Runtime = {
   WhatsAppEngineManager: typeof import('../lib/whatsapp-engine/manager').WhatsAppEngineManager;
   db: typeof import('../lib/db/sqlite').db;
+  sendText: typeof import('../lib/whatsapp-engine/send').sendText;
+  sendMedia: typeof import('../lib/whatsapp-engine/send').sendMedia;
+  sendAudio: typeof import('../lib/whatsapp-engine/send').sendAudio;
 };
 
 async function startConfiguredInstances({ WhatsAppEngineManager, db }: Runtime) {
@@ -75,19 +78,69 @@ async function startConfiguredInstances({ WhatsAppEngineManager, db }: Runtime) 
   }
 }
 
+async function processPendingOutboundMessages({ db, sendText, sendMedia, sendAudio }: Runtime) {
+  const pending = db.listPendingOutboundMessages(20).filter(Boolean) as any[];
+  if (!pending.length) return;
+
+  for (const message of pending) {
+    try {
+      db.markOutboundMessageSending(message.id);
+
+      if (message.reply_type === 'text') {
+        await sendText({
+          instanceId: message.instance_id,
+          remoteJid: message.remote_jid,
+          text: message.text_content,
+          quotedMessageId: message.quoted_message_id || undefined,
+        });
+      } else if (message.reply_type === 'media') {
+        await sendMedia({
+          instanceId: message.instance_id,
+          remoteJid: message.remote_jid,
+          mediaUrl: message.media_url,
+          mediaType: message.media_type,
+          mimeType: message.mime_type,
+          caption: message.text_content || undefined,
+          quotedMessageId: message.quoted_message_id || undefined,
+        });
+      } else if (message.reply_type === 'audio') {
+        await sendAudio({
+          instanceId: message.instance_id,
+          remoteJid: message.remote_jid,
+          audioUrl: message.media_url,
+          quotedMessageId: message.quoted_message_id || undefined,
+        });
+      } else {
+        throw new Error(`Unsupported outbound message type: ${message.reply_type}`);
+      }
+
+      db.markOutboundMessageSent(message.id);
+      console.log(`[worker] Sent outbound message ${message.id} to ${message.remote_jid}`);
+    } catch (err: any) {
+      db.markOutboundMessageFailed(message.id, err.message || 'Failed to send outbound message');
+      console.error(`[worker] Failed outbound message ${message.id}:`, err);
+    }
+  }
+}
+
 async function main() {
-  const [{ WhatsAppEngineManager }, { db }] = await Promise.all([
+  const [{ WhatsAppEngineManager }, { db }, { sendText, sendMedia, sendAudio }] = await Promise.all([
     import('../lib/whatsapp-engine/manager'),
     import('../lib/db/sqlite'),
+    import('../lib/whatsapp-engine/send'),
   ]);
 
-  const runtime = { WhatsAppEngineManager, db };
+  const runtime = { WhatsAppEngineManager, db, sendText, sendMedia, sendAudio };
   console.log(`[worker] APP_BASE_URL=${process.env.APP_BASE_URL || '(not set)'}`);
 
   await startConfiguredInstances(runtime);
+  await processPendingOutboundMessages(runtime);
 
   setInterval(() => {
-    startConfiguredInstances(runtime).catch((err) => {
+    Promise.all([
+      startConfiguredInstances(runtime),
+      processPendingOutboundMessages(runtime),
+    ]).catch((err) => {
       console.error('[worker] Polling error:', err);
     });
   }, POLL_INTERVAL_MS);
