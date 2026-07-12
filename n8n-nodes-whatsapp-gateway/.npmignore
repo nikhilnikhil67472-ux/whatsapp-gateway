@@ -1,0 +1,5 @@
+credentials/
+nodes/
+scripts/
+tsconfig.json
+*.tgz

@@ -1,17 +1,35 @@
 {
-  "name": "n8n-nodes-whatsapp-gateway",
+  "name": "n8n-nodes-whatsapp-ai-gateway",
   "version": "0.1.0",
-  "description": "n8n node for sending WhatsApp messages through WhatsApp AI Gateway",
+  "description": "n8n community node for sending WhatsApp messages through a self-hosted WhatsApp AI Gateway",
   "keywords": [
     "n8n-community-node-package",
+    "n8n-node",
     "whatsapp",
     "gateway",
-    "baileys"
+    "baileys",
+    "automation",
+    "ai"
   ],
   "license": "MIT",
-  "main": "index.js",
+  "homepage": "https://github.com/nikhilnikhil67472-ux/whatsapp-gateway#readme",
+  "author": {
+    "name": "Nikhil"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nikhilnikhil67472-ux/whatsapp-gateway.git",
+    "directory": "n8n-nodes-whatsapp-gateway"
+  },
+  "bugs": {
+    "url": "https://github.com/nikhilnikhil67472-ux/whatsapp-gateway/issues"
+  },
+  "main": "dist/nodes/WhatsAppGateway/WhatsAppGateway.node.js",
+  "types": "dist/nodes/WhatsAppGateway/WhatsAppGateway.node.d.ts",
   "scripts": {
-    "build": "tsc && node scripts/copy-assets.cjs"
+    "build": "tsc && node scripts/copy-assets.cjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "files": [
     "dist"
@@ -26,9 +44,16 @@
     ]
   },
   "devDependencies": {
+    "n8n-workflow": "^2.16.0",
     "typescript": "^5.0.0"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
