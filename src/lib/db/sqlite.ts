@@ -208,6 +208,14 @@ export const db = {
     return inflateInstance(sqlite.prepare('SELECT * FROM whatsapp_instances WHERE id = ?').get(instanceId));
   },
 
+  getInstanceByIdentifier(identifier: string) {
+    return inflateInstance(sqlite.prepare(`
+      SELECT * FROM whatsapp_instances
+      WHERE id = ? OR instance_name = ?
+      LIMIT 1
+    `).get(identifier, identifier));
+  },
+
   createInstance(data: Record<string, any>) {
     const instanceId = data.id || id();
     const ts = now();

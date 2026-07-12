@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WhatsAppGateway = void 0;
+const n8n_workflow_1 = require("n8n-workflow");
 class WhatsAppGateway {
     constructor() {
         this.description = {
@@ -172,6 +173,7 @@ class WhatsAppGateway {
         };
     }
     async execute() {
+        var _a, _b, _c, _d, _e, _f;
         const items = this.getInputData();
         const credentials = await this.getCredentials('whatsAppGatewayApi');
         const returnData = [];
@@ -210,7 +212,20 @@ class WhatsAppGateway {
                 body,
                 json: true,
             };
-            const responseData = await this.helpers.httpRequest(options);
+            let responseData;
+            try {
+                responseData = await this.helpers.httpRequest(options);
+            }
+            catch (error) {
+                const responseBody = ((_a = error === null || error === void 0 ? void 0 : error.response) === null || _a === void 0 ? void 0 : _a.data) || ((_c = (_b = error === null || error === void 0 ? void 0 : error.cause) === null || _b === void 0 ? void 0 : _b.response) === null || _c === void 0 ? void 0 : _c.data);
+                const statusCode = ((_d = error === null || error === void 0 ? void 0 : error.response) === null || _d === void 0 ? void 0 : _d.status) || ((_f = (_e = error === null || error === void 0 ? void 0 : error.cause) === null || _e === void 0 ? void 0 : _e.response) === null || _f === void 0 ? void 0 : _f.status);
+                throw new n8n_workflow_1.NodeApiError(this.getNode(), error, {
+                    message: (responseBody === null || responseBody === void 0 ? void 0 : responseBody.error) || error.message || 'WhatsApp Gateway request failed',
+                    description: responseBody
+                        ? JSON.stringify(responseBody)
+                        : `Gateway returned HTTP ${statusCode || 'error'}`,
+                });
+            }
             returnData.push({
                 json: responseData,
                 pairedItem: { item: i },

@@ -42,7 +42,7 @@ Create **WhatsApp Gateway API** credentials:
 
 ## Node Fields
 
-- **Instance ID**: copied from the WhatsApp AI Gateway dashboard URL.
+- **Instance ID**: copied from the WhatsApp AI Gateway dashboard URL. The gateway also accepts the exact instance name on newer gateway versions.
 - **Recipient Type**: phone number or WhatsApp JID.
 - **Phone Number**: country code included, for example `919876543210`.
 - **Message Type**: text, media, or audio.

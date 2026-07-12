@@ -4,6 +4,7 @@ import {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  NodeApiError,
 } from 'n8n-workflow';
 
 export class WhatsAppGateway implements INodeType {
@@ -219,7 +220,20 @@ export class WhatsAppGateway implements INodeType {
         json: true,
       };
 
-      const responseData = await this.helpers.httpRequest(options);
+      let responseData;
+      try {
+        responseData = await this.helpers.httpRequest(options);
+      } catch (error: any) {
+        const responseBody = error?.response?.data || error?.cause?.response?.data;
+        const statusCode = error?.response?.status || error?.cause?.response?.status;
+        throw new NodeApiError(this.getNode(), error, {
+          message: responseBody?.error || error.message || 'WhatsApp Gateway request failed',
+          description: responseBody
+            ? JSON.stringify(responseBody)
+            : `Gateway returned HTTP ${statusCode || 'error'}`,
+        });
+      }
+
       returnData.push({
         json: responseData,
         pairedItem: { item: i },

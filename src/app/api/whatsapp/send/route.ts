@@ -5,7 +5,7 @@ import { db } from '@/lib/db/sqlite';
 export const dynamic = 'force-dynamic';
 
 const sendSchema = z.object({
-  instanceId: z.string().uuid(),
+  instanceId: z.string().min(1),
   remoteJid: z.string().optional(),
   phoneNumber: z.string().optional(),
   type: z.enum(['text', 'media', 'audio']),
@@ -40,14 +40,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields for the specified type' }, { status: 400 });
     }
 
-    const instance = db.getInstance(instanceId);
+    const instance = db.getInstanceByIdentifier(instanceId);
     if (!instance) {
-      return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+      return NextResponse.json({
+        error: 'Instance not found',
+        hint: 'Use the instance UUID from the dashboard URL, or the exact instance name.',
+        receivedInstanceId: instanceId,
+      }, { status: 404 });
     }
+    const resolvedInstanceId = instance.id;
 
     const outboundId = db.enqueueOutboundMessage({
-      instance_id: instanceId,
-      conversation_id: `${instanceId}_${remoteJid}`,
+      instance_id: resolvedInstanceId,
+      conversation_id: `${resolvedInstanceId}_${remoteJid}`,
       remote_jid: remoteJid,
       reply_type: type,
       text_content: text || null,
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
       queued: true,
       data: {
         id: outboundId,
-        instanceId,
+        instanceId: resolvedInstanceId,
         remoteJid,
         type,
         status: 'pending',
