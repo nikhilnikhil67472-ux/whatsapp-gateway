@@ -1,5 +1,8 @@
 import { db } from '@/lib/db/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function ConversationsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   

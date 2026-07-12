@@ -3,6 +3,9 @@ import { Home, Settings, MessageSquare, QrCode, Activity } from 'lucide-react';
 import CreateInstanceForm from './CreateInstanceForm';
 import { db } from '@/lib/db/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function InstancesPage() {
   const instances = db.listInstances();
   const connectedCount = instances.filter((instance: any) => instance.status === 'connected').length;

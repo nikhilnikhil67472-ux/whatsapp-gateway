@@ -1,6 +1,9 @@
 import { Activity, CheckCircle2, Database, Server } from 'lucide-react';
 import { db } from '@/lib/db/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default async function HealthPage() {
   const instances = db.listInstances();
   const connected = instances.filter((instance: any) => instance.status === 'connected').length;

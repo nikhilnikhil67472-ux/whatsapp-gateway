@@ -2,6 +2,9 @@ import Link from 'next/link';
 import { Bot, CheckCircle2, MessageSquare, QrCode, Settings, TestTube2, XCircle } from 'lucide-react';
 import { db } from '@/lib/db/sqlite';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 function Step({ done, title, detail, href, action }: { done: boolean; title: string; detail: string; href: string; action: string }) {
   return (
     <div className={`setup-step ${done ? 'done' : ''}`}>

@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { WhatsAppEngineManager } from '@/lib/whatsapp-engine/manager';
+import { db } from '@/lib/db/sqlite';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    await WhatsAppEngineManager.restartInstance(id);
-    return NextResponse.json({ success: true, message: 'Instance restarted' });
+    const instance = db.getInstance(id);
+    if (!instance) {
+      return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+    }
+
+    db.updateInstance(id, {
+      status: 'reconnecting',
+      qr_base64: null,
+      qr_updated_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Restart requested. The background worker will reconnect this instance.',
+      data: db.getInstance(id),
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

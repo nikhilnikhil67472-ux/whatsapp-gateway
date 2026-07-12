@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { WhatsAppEngineManager } from '@/lib/whatsapp-engine/manager';
 import { z } from 'zod';
 import { DEFAULT_EVENT_SETTINGS } from '@/lib/whatsapp-engine/event-settings';
 import { db } from '@/lib/db/sqlite';
+
+export const dynamic = 'force-dynamic';
 
 const createSchema = z.object({
   clientId: z.string().optional(),
@@ -44,10 +45,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // 2. Start local socket
-    WhatsAppEngineManager.startInstance(instanceId).catch(e => {
-      console.error('Failed to start socket for new instance:', e);
-    });
+    // The background worker owns Baileys sockets in production. It polls SQLite
+    // and starts newly created instances without creating a duplicate web-process socket.
 
     return NextResponse.json({
       success: true,
