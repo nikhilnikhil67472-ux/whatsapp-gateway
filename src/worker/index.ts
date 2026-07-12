@@ -27,13 +27,6 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const [{ WhatsAppEngineManager }, { db }] = await Promise.all([
-  import('../lib/whatsapp-engine/manager'),
-  import('../lib/db/sqlite'),
-]);
-
-console.log(`[worker] APP_BASE_URL=${process.env.APP_BASE_URL || '(not set)'}`);
-
 const STARTABLE_STATUSES = new Set([
   'created',
   'waiting_qr',
@@ -45,7 +38,12 @@ const STARTABLE_STATUSES = new Set([
 
 const activeOperations = new Set<string>();
 
-async function startConfiguredInstances() {
+type Runtime = {
+  WhatsAppEngineManager: typeof import('../lib/whatsapp-engine/manager').WhatsAppEngineManager;
+  db: typeof import('../lib/db/sqlite').db;
+};
+
+async function startConfiguredInstances({ WhatsAppEngineManager, db }: Runtime) {
   const instances = db.listStartableInstances([...STARTABLE_STATUSES]);
 
   console.log(`[worker] Found ${instances.length} startable WhatsApp instance(s).`);
@@ -77,16 +75,28 @@ async function startConfiguredInstances() {
   }
 }
 
-startConfiguredInstances().catch((err) => {
+async function main() {
+  const [{ WhatsAppEngineManager }, { db }] = await Promise.all([
+    import('../lib/whatsapp-engine/manager'),
+    import('../lib/db/sqlite'),
+  ]);
+
+  const runtime = { WhatsAppEngineManager, db };
+  console.log(`[worker] APP_BASE_URL=${process.env.APP_BASE_URL || '(not set)'}`);
+
+  await startConfiguredInstances(runtime);
+
+  setInterval(() => {
+    startConfiguredInstances(runtime).catch((err) => {
+      console.error('[worker] Polling error:', err);
+    });
+  }, POLL_INTERVAL_MS);
+}
+
+main().catch((err) => {
   console.error('[worker] Fatal startup error:', err);
   process.exitCode = 1;
 });
-
-setInterval(() => {
-  startConfiguredInstances().catch((err) => {
-    console.error('[worker] Polling error:', err);
-  });
-}, POLL_INTERVAL_MS);
 
 process.on('SIGINT', () => {
   console.log('[worker] Shutting down...');
