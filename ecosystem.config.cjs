@@ -1,10 +1,10 @@
 module.exports = {
   apps: [
     {
-      name: 'whatsapp-gateway-web',
+      name: 'gateway-web',
       cwd: __dirname,
       script: 'npm',
-      args: 'run start',
+      args: 'run start -- -H 127.0.0.1 -p 3000',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -15,7 +15,7 @@ module.exports = {
       },
     },
     {
-      name: 'whatsapp-gateway-worker',
+      name: 'gateway-worker',
       cwd: __dirname,
       script: 'npm',
       args: 'run worker',
