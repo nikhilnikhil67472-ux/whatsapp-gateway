@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/sqlite';
+import { toPublicInstance } from '@/lib/instances/public-instance';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       status: instance.status,
       qrBase64: instance.qr_base64,
       updatedAt: instance.qr_updated_at,
-      data: instance,
+      data: toPublicInstance(instance),
     }, {
       headers: {
         'Cache-Control': 'no-store, max-age=0',

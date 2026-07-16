@@ -111,6 +111,14 @@ export class WhatsAppGateway implements INodeType {
             name: 'Audio',
             value: 'audio',
           },
+          {
+            name: 'Location',
+            value: 'location',
+          },
+          {
+            name: 'Contact',
+            value: 'contact',
+          },
         ],
         default: 'text',
       },
@@ -125,6 +133,21 @@ export class WhatsAppGateway implements INodeType {
         description: 'Text message or media caption',
       },
       {
+        displayName: 'Media Source',
+        name: 'mediaSource',
+        type: 'options',
+        options: [
+          { name: 'URL', value: 'url' },
+          { name: 'Base64', value: 'base64' },
+        ],
+        default: 'url',
+        displayOptions: {
+          show: {
+            type: ['media', 'audio'],
+          },
+        },
+      },
+      {
         displayName: 'Media URL',
         name: 'mediaUrl',
         type: 'string',
@@ -133,6 +156,20 @@ export class WhatsAppGateway implements INodeType {
         displayOptions: {
           show: {
             type: ['media', 'audio'],
+            mediaSource: ['url'],
+          },
+        },
+      },
+      {
+        displayName: 'Base64 Data',
+        name: 'base64',
+        type: 'string',
+        typeOptions: { rows: 3 },
+        default: '',
+        displayOptions: {
+          show: {
+            type: ['media', 'audio'],
+            mediaSource: ['base64'],
           },
         },
       },
@@ -162,6 +199,51 @@ export class WhatsAppGateway implements INodeType {
         },
       },
       {
+        displayName: 'Latitude',
+        name: 'latitude',
+        type: 'number',
+        default: 0,
+        displayOptions: { show: { type: ['location'] } },
+      },
+      {
+        displayName: 'Longitude',
+        name: 'longitude',
+        type: 'number',
+        default: 0,
+        displayOptions: { show: { type: ['location'] } },
+      },
+      {
+        displayName: 'Location Name',
+        name: 'locationName',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { type: ['location'] } },
+      },
+      {
+        displayName: 'Address',
+        name: 'address',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { type: ['location'] } },
+      },
+      {
+        displayName: 'Contact Name',
+        name: 'contactName',
+        type: 'string',
+        default: '',
+        displayOptions: { show: { type: ['contact'] } },
+        required: true,
+      },
+      {
+        displayName: 'vCard',
+        name: 'vcard',
+        type: 'string',
+        typeOptions: { rows: 6 },
+        default: '',
+        displayOptions: { show: { type: ['contact'] } },
+        required: true,
+      },
+      {
         displayName: 'MIME Type',
         name: 'mimeType',
         type: 'string',
@@ -178,7 +260,7 @@ export class WhatsAppGateway implements INodeType {
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
-    const credentials = await this.getCredentials('whatsAppGatewayApi') as { baseUrl: string };
+    const credentials = await this.getCredentials('whatsAppGatewayApi') as { baseUrl: string; apiKey: string };
     const returnData: INodeExecutionData[] = [];
 
     for (let i = 0; i < items.length; i++) {
@@ -187,6 +269,8 @@ export class WhatsAppGateway implements INodeType {
       const type = this.getNodeParameter('type', i) as string;
       const text = this.getNodeParameter('text', i, '') as string;
       const mediaUrl = this.getNodeParameter('mediaUrl', i, '') as string;
+      const mediaSource = this.getNodeParameter('mediaSource', i, 'url') as string;
+      const base64 = this.getNodeParameter('base64', i, '') as string;
       const mediaType = this.getNodeParameter('mediaType', i, '') as string;
       const mimeType = this.getNodeParameter('mimeType', i, '') as string;
 
@@ -203,11 +287,22 @@ export class WhatsAppGateway implements INodeType {
       }
 
       if (type === 'media' || type === 'audio') {
-        body.mediaUrl = mediaUrl;
+        if (mediaSource === 'base64') body.base64 = base64;
+        else body.mediaUrl = mediaUrl;
       }
       if (type === 'media') {
         body.mediaType = mediaType;
         body.mimeType = mimeType;
+      }
+      if (type === 'location') {
+        body.latitude = this.getNodeParameter('latitude', i) as number;
+        body.longitude = this.getNodeParameter('longitude', i) as number;
+        body.locationName = this.getNodeParameter('locationName', i, '') as string;
+        body.address = this.getNodeParameter('address', i, '') as string;
+      }
+      if (type === 'contact') {
+        body.contactName = this.getNodeParameter('contactName', i) as string;
+        body.vcard = this.getNodeParameter('vcard', i) as string;
       }
 
       const options: IHttpRequestOptions = {
@@ -215,6 +310,7 @@ export class WhatsAppGateway implements INodeType {
         url: `${credentials.baseUrl.replace(/\/$/, '')}/api/whatsapp/send`,
         headers: {
           Accept: 'application/json',
+          Authorization: `Bearer ${credentials.apiKey}`,
         },
         body,
         json: true,

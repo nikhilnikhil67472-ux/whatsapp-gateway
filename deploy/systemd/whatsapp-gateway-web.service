@@ -1,0 +1,19 @@
+[Unit]
+Description=WhatsApp Gateway web dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=whatsapp-gateway
+Group=whatsapp-gateway
+WorkingDirectory=/opt/whatsapp-gateway
+EnvironmentFile=/opt/whatsapp-gateway/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

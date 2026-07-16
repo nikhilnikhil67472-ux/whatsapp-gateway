@@ -1,46 +1,47 @@
 'use client';
 
-import { useState, useEffect, use, useCallback } from 'react';
+import { useCallback, useEffect, useState, use } from 'react';
 import Image from 'next/image';
-import { RefreshCcw } from 'lucide-react';
+import { CircleCheckBig, RefreshCcw } from 'lucide-react';
 
 export default function QRPage({ params }: { params: Promise<{ id: string }> }) {
-  const unwrappedParams = use(params);
-  const id = unwrappedParams.id;
-
+  const { id } = use(params);
   const [instance, setInstance] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchInstance = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch(`/api/instances/${id}`, { cache: 'no-store' });
-    const json = await res.json();
-    if (json.success) setInstance(json.data);
+    const response = await fetch(`/api/instances/${id}`, { cache: 'no-store' });
+    const result = await response.json();
+    if (result.success) setInstance(result.data);
     setLoading(false);
   }, [id]);
 
   useEffect(() => {
-    fetchInstance();
-
+    const initialLoad = window.setTimeout(() => void fetchInstance(), 0);
     const interval = window.setInterval(async () => {
-      const res = await fetch(`/api/instances/${id}/status`, { cache: 'no-store' });
-      const json = await res.json();
-      if (json.data) setInstance(json.data);
-    }, 2000);
-
+      const response = await fetch(`/api/instances/${id}/status`, { cache: 'no-store' });
+      const result = await response.json();
+      if (result.data) setInstance(result.data);
+    }, 2_000);
     return () => {
+      window.clearTimeout(initialLoad);
       window.clearInterval(interval);
     };
   }, [fetchInstance, id]);
 
   async function handleRefresh() {
     setRefreshing(true);
+    setError('');
     try {
-      const res = await fetch(`/api/instances/${id}/restart`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to restart socket');
-    } catch (err: any) {
-      alert(err.message);
+      const response = await fetch(`/api/instances/${id}/restart`, { method: 'POST' });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to restart socket');
+      }
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Failed to restart socket');
     } finally {
       setRefreshing(false);
     }
@@ -56,7 +57,7 @@ export default function QRPage({ params }: { params: Promise<{ id: string }> }) 
           <p className="page-kicker">Pair Device</p>
           <h1 className="page-title">Connect WhatsApp</h1>
           <p className="page-subtitle">
-            Scan the QR from WhatsApp Linked Devices. The gateway will keep this instance connected through Baileys.
+            Scan the QR from WhatsApp Linked Devices. The gateway keeps the session in SQLite across restarts.
           </p>
         </div>
       </div>
@@ -64,13 +65,13 @@ export default function QRPage({ params }: { params: Promise<{ id: string }> }) 
       <div className="card qr-card">
         <h2 style={{ marginTop: 0, marginBottom: '10px' }}>{instance.instance_name}</h2>
         <div style={{ marginBottom: '24px' }}>
-          Status: <span className={`status-badge ${instance.status}`}>{instance.status.replace('_', ' ')}</span>
+          Status: <span className={`status-badge ${instance.status}`}>{instance.status.replaceAll('_', ' ')}</span>
         </div>
 
         {instance.status === 'connected' ? (
           <div>
-            <div className="connected-icon">✓</div>
-            <h3>WhatsApp Connected Successfully</h3>
+            <div className="connected-icon"><CircleCheckBig size={30} /></div>
+            <h3>WhatsApp connected</h3>
             <p style={{ color: 'var(--text-muted)' }}>
               Linked Phone: {instance.phone_number || '-'}<br />
               Push Name: {instance.push_name || '-'}
@@ -104,6 +105,7 @@ export default function QRPage({ params }: { params: Promise<{ id: string }> }) 
             </button>
           </div>
         )}
+        {error && <div className="test-result error" role="alert">{error}</div>}
       </div>
     </div>
   );

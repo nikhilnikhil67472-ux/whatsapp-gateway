@@ -1,78 +1,109 @@
 import fs from 'fs';
 import path from 'path';
-import { initAuthCreds, BufferJSON, AuthenticationState, SignalDataTypeMap } from '@whiskeysockets/baileys';
+import {
+  AuthenticationState,
+  BufferJSON,
+  initAuthCreds,
+  proto,
+  SignalDataTypeMap,
+} from '@whiskeysockets/baileys';
+import { db } from '../db/sqlite';
 
-export const getSessionRoot = () => {
-  return process.env.WHATSAPP_SESSION_ROOT || path.join(/* turbopackIgnore: true */ process.cwd(), 'data', 'whatsapp-sessions');
-};
+export const getLegacySessionRoot = () =>
+  process.env.WHATSAPP_SESSION_ROOT
+  || path.join(/* turbopackIgnore: true */ process.cwd(), 'data', 'whatsapp-sessions');
 
-export async function useMultiFileAuthState(instanceId: string): Promise<{ state: AuthenticationState, saveCreds: () => Promise<void> }> {
-  const folder = path.join(getSessionRoot(), instanceId);
+function serialize(value: unknown) {
+  return JSON.stringify(value, BufferJSON.replacer);
+}
 
-  // Ensure folder exists
-  if (!fs.existsSync(folder)) {
-    fs.mkdirSync(folder, { recursive: true });
+function deserialize<T>(value: string): T {
+  return JSON.parse(value, BufferJSON.reviver) as T;
+}
+
+async function readLegacyValue(instanceId: string, fileName: string) {
+  try {
+    const filePath = path.join(getLegacySessionRoot(), instanceId, fileName);
+    const contents = await fs.promises.readFile(filePath, 'utf8');
+    return contents;
+  } catch {
+    return null;
+  }
+}
+
+export async function createSqliteAuthState(
+  instanceId: string,
+): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
+  let serializedCreds = db.getAuthCreds(instanceId);
+
+  if (!serializedCreds) {
+    serializedCreds = await readLegacyValue(instanceId, 'creds.json');
+    if (serializedCreds) {
+      db.saveAuthCreds(instanceId, serializedCreds);
+      console.log(`[Baileys ${instanceId}] Migrated legacy credentials into SQLite.`);
+    }
   }
 
-  const writeData = (data: any, file: string) => {
-    return fs.promises.writeFile(path.join(folder, file), JSON.stringify(data, BufferJSON.replacer));
-  };
-
-  const readData = async (file: string) => {
-    try {
-      const data = await fs.promises.readFile(path.join(folder, file), { encoding: 'utf-8' });
-      return JSON.parse(data, BufferJSON.reviver);
-    } catch (error) {
-      return null;
-    }
-  };
-
-  const removeData = async (file: string) => {
-    try {
-      if (fs.existsSync(path.join(folder, file))) {
-        await fs.promises.unlink(path.join(folder, file));
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const creds = await readData('creds.json') || initAuthCreds();
+  const creds = serializedCreds
+    ? deserialize<AuthenticationState['creds']>(serializedCreds)
+    : initAuthCreds();
 
   return {
     state: {
       creds,
       keys: {
-        get: async (type: keyof SignalDataTypeMap, ids: string[]) => {
-          const data: { [key: string]: any } = {};
-          await Promise.all(
-            ids.map(async id => {
-              let value = await readData(`${type}-${id}.json`);
-              if (type === 'app-state-sync-key' && value) {
-                value = { ...value, encKey: Buffer.from(value.encKey, 'base64'), macKey: Buffer.from(value.macKey, 'base64') };
-              }
-              data[id] = value;
-            })
-          );
-          return data;
-        },
-        set: async (data: any) => {
-          const tasks: Promise<void>[] = [];
-          for (const category of Object.keys(data)) {
-            for (const id of Object.keys(data[category])) {
-              const value = data[category][id];
-              const file = `${category}-${id}.json`;
-              if (value) {
-                tasks.push(writeData(value, file));
-              } else {
-                tasks.push(removeData(file));
+        get: async <T extends keyof SignalDataTypeMap>(type: T, ids: string[]) => {
+          const stored = db.getAuthKeys(instanceId, type, ids);
+          const values: { [id: string]: SignalDataTypeMap[T] } = {};
+
+          for (const keyId of ids) {
+            let serialized = stored.get(keyId) || null;
+
+            if (!serialized) {
+              serialized = await readLegacyValue(instanceId, `${type}-${keyId}.json`);
+              if (serialized) {
+                db.saveAuthKey(instanceId, type, keyId, serialized);
               }
             }
+
+            if (!serialized) continue;
+            let value = deserialize<SignalDataTypeMap[T]>(serialized);
+            if (type === 'app-state-sync-key' && value) {
+              value = proto.Message.AppStateSyncKeyData.fromObject(
+                value as unknown as Record<string, unknown>,
+              ) as unknown as SignalDataTypeMap[T];
+            }
+            values[keyId] = value;
           }
-          await Promise.all(tasks);
-        }
-      }
+
+          return values;
+        },
+        set: async (data) => {
+          const transaction = Object.entries(data).flatMap(([type, entries]) =>
+            Object.entries(entries || {}).map(([keyId, value]) => ({
+              type,
+              keyId,
+              value,
+            })),
+          );
+
+          db.saveAuthKeys(
+            instanceId,
+            transaction.map((item) => ({
+              keyType: item.type,
+              keyId: item.keyId,
+              data: item.value ? serialize(item.value) : null,
+            })),
+          );
+        },
+      },
     },
-    saveCreds: () => writeData(creds, 'creds.json')
+    saveCreds: async () => {
+      db.saveAuthCreds(instanceId, serialize(creds));
+    },
   };
+}
+
+export async function clearSqliteAuthState(instanceId: string) {
+  db.clearAuthState(instanceId);
 }

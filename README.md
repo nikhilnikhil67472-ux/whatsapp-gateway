@@ -1,129 +1,150 @@
 # WhatsApp AI Gateway
 
-Simple self-hosted WhatsApp AI gateway using Baileys, Next.js, local SQLite, and n8n webhooks.
+Self-hosted WhatsApp integration middleware built with Next.js, TypeScript, Baileys, SQLite, and n8n/custom webhooks.
 
-## What It Does
+## Core Capabilities
 
-- Create multiple WhatsApp instances from the dashboard.
-- Scan QR and connect WhatsApp through Baileys.
-- Store instances, logs, messages, and conversations in local SQLite.
-- Receive WhatsApp messages and send them to an n8n webhook.
-- Send AI replies back to WhatsApp.
-- Configure message, group, call, contact, and webhook event settings per instance.
+- Multiple concurrent WhatsApp instances with QR pairing.
+- Baileys credentials and signal keys stored directly in SQLite.
+- Automatic reconnect with exponential backoff.
+- Durable worker commands for start, restart, stop, and logout.
+- Retry queues for outbound WhatsApp messages and non-message webhooks.
+- Text, image, video, document, voice note, audio, location, and contact support.
+- Decrypted inbound media as a public URL or optional Base64 payload.
+- LID-aware sender identity resolution.
+- HMAC-signed webhooks and optional bearer authentication.
+- Dashboard login plus global and per-instance outbound API keys.
 
-## Quick Setup
-
-No Firebase setup is required.
-
-1. Install dependencies:
-
-```bash
-npm install
-```
-
-2. Optional environment file:
+## Local Setup
 
 ```bash
-cp .env.example .env.local
-```
-
-If your n8n or AI agent runs outside this machine, set `APP_BASE_URL` to a public URL so media files can be downloaded:
-
-```env
-APP_BASE_URL=https://your-domain.com
-```
-
-For local testing with cloud n8n, use a tunnel such as ngrok or Cloudflare Tunnel and put that HTTPS URL in `APP_BASE_URL`.
-
-3. Build and run:
-
-```bash
-npm run build
-npm run start:all
-```
-
-4. Open:
-
-```text
-http://127.0.0.1:3000/dashboard/instances
-```
-
-5. Create an instance, scan QR, add your n8n webhook URL, and enable AI.
-
-## Local Data
-
-The app creates local files automatically:
-
-```text
-data/gateway.db
-data/whatsapp-sessions/
-public/media/
-```
-
-Incoming WhatsApp media is saved under `public/media` and sent to n8n as `media.url`. Cloud agents can only open that URL when `APP_BASE_URL` is publicly reachable.
-
-Back up the `data` folder if you want to keep instances, chat logs, and WhatsApp sessions.
-
-## Useful Commands
-
-Development:
-
-```bash
+npm ci
+copy .env.example .env.local
 npm run dev:all
 ```
 
-Production:
+Open `http://127.0.0.1:3000`. In development, dashboard and API auth can run without secrets. Production intentionally requires secure environment values.
+
+## Required Production Environment
+
+```env
+NODE_ENV=production
+SQLITE_DB_PATH=/var/lib/whatsapp-gateway/gateway.db
+APP_BASE_URL=https://gateway.example.com
+ENCRYPTION_KEY=exactly-32-characters-long-key!!
+AUTH_SECRET=replace-with-at-least-32-random-characters
+DASHBOARD_PASSWORD=replace-with-a-strong-password
+GATEWAY_API_KEY=replace-with-a-long-random-api-key
+ALLOW_INSECURE_API=false
+```
+
+`APP_BASE_URL` must be reachable by the AI agent if it downloads inbound media. Enable **Include decrypted media as Base64** in instance settings when the agent needs voice/image bytes inside the webhook payload.
+
+## Run Without Docker
 
 ```bash
+npm ci
 npm run build
 npm run start:all
 ```
 
-Run dashboard and worker separately:
+For AWS EC2, use the two systemd units in `deploy/systemd` and the Nginx config in `deploy/nginx`. Keep the SQLite database and `public/media` on persistent storage. Run one Baileys worker against a SQLite database; horizontal scaling requires moving queues and auth state to PostgreSQL/Redis.
 
-```bash
-npm run start
-npm run worker
+## Outbound API
+
+Endpoint:
+
+```text
+POST /api/whatsapp/send
+Authorization: Bearer <global-or-instance-api-key>
 ```
 
-## Instance Event Settings
+Text:
 
-Each instance has simple controls under Settings:
+```json
+{
+  "instanceId": "instance-name-or-uuid",
+  "phoneNumber": "919876543210",
+  "type": "text",
+  "text": "Hello"
+}
+```
 
-- Message events: private messages, AI routing, reactions, deleted messages, receipts, media.
-- Group events: ignore groups by default, send groups to AI only when enabled, log participant changes.
-- Call settings: detect calls, auto reject, send call auto reply.
-- Contacts and chats: contact sync, chat updates, presence, blocklist.
-- Webhook event forwarding: send non-message events to the same n8n webhook.
+Media supports either `mediaUrl` or `base64`:
 
-## n8n Webhook Reply Formats
+```json
+{
+  "instanceId": "instance-name-or-uuid",
+  "remoteJid": "919876543210@s.whatsapp.net",
+  "type": "media",
+  "mediaUrl": "https://example.com/invoice.pdf",
+  "mediaType": "document",
+  "mimeType": "application/pdf",
+  "fileName": "invoice.pdf",
+  "text": "Your invoice"
+}
+```
 
-Strict format:
+Supported `type` values are `text`, `media`, `audio`, `location`, and `contact`.
+
+## Incoming AI Webhook
+
+Message payloads include:
+
+- Instance and sender identity, including phone number, JID, alternate JID, and LID.
+- Normalized message type, text, caption, timestamp, and structured data.
+- Media MIME type, file name, size, URL, and optional `base64_data`.
+- Recent conversation history.
+
+Webhook verification headers:
+
+```text
+X-Webhook-Event
+X-Webhook-Delivery
+X-Webhook-Timestamp
+X-Webhook-Signature: sha256=<hmac>
+```
+
+Verify the signature over `<timestamp>.<raw-request-body>` using the instance webhook secret.
+
+Accepted text reply formats:
 
 ```json
 { "reply": true, "type": "text", "text": "Hello!" }
 ```
 
-Loose AI output:
-
 ```json
 { "output": "Hello!" }
 ```
 
-Array format:
+Media, audio, location, and contact replies use the same outbound field names as the REST API. AI replies are queued and retried instead of being sent inline.
 
-```json
-[{ "reply": true, "type": "text", "text": "Hello!" }]
+## Persistence and Backups
+
+Back up:
+
+```text
+data/gateway.db
+public/media/
 ```
 
-## Troubleshooting
+Legacy `data/whatsapp-sessions` files are imported into SQLite automatically on first use and may be retained as a temporary backup.
 
-- QR not showing: make sure `npm run worker` is running.
-- Webhook not replying: verify the URL in Instance Settings and check Logs.
-- Group messages ignored: disable "Ignore group messages" and enable "Send group messages to AI".
-- Calls not auto-replying: enable "Detect incoming calls" and "Send auto reply after call".
-- Need to move the app: copy the project folder plus the `data` folder.
+## n8n Community Node
 
-## Important
+The package is in `n8n-nodes-whatsapp-gateway`. Its credential requires:
 
-This project uses Baileys/WhatsApp Web. It does not use WhatsApp Cloud API. Keep message volume reasonable and avoid spam automation.
+- Gateway Base URL
+- Global or instance API key
+
+Build it with:
+
+```bash
+cd n8n-nodes-whatsapp-gateway
+npm ci
+npm run build
+```
+
+## Operational Notes
+
+This project uses WhatsApp Web through Baileys, not the official WhatsApp Cloud API. Avoid spam and abusive automation. For strict enterprise compliance, use Meta's official API.

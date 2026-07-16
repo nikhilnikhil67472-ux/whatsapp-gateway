@@ -1,18 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db/sqlite';
+import { authorizeGatewayRequest } from '@/lib/security/api-key';
 
 export const dynamic = 'force-dynamic';
 
 const sendSchema = z.object({
   instanceId: z.string().min(1),
-  remoteJid: z.string().optional(),
-  phoneNumber: z.string().optional(),
-  type: z.enum(['text', 'media', 'audio']),
-  text: z.string().optional(),
-  mediaUrl: z.string().optional(),
-  mediaType: z.string().optional(),
-  mimeType: z.string().optional(),
+  remoteJid: z.string().max(160).optional(),
+  phoneNumber: z.string().max(30).optional(),
+  type: z.enum(['text', 'media', 'audio', 'location', 'contact']),
+  text: z.string().max(65_536).optional(),
+  mediaUrl: z.string().url().max(2_048).optional(),
+  base64: z.string().max(35_000_000).optional(),
+  mediaType: z.enum(['image', 'video', 'document']).optional(),
+  mimeType: z.string().max(200).optional(),
+  fileName: z.string().max(180).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  locationName: z.string().max(200).optional(),
+  address: z.string().max(500).optional(),
+  contactName: z.string().max(200).optional(),
+  vcard: z.string().max(20_000).optional(),
   quotedMessageId: z.string().optional(),
 });
 
@@ -25,7 +34,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid payload', details: parsed.error.issues }, { status: 400 });
     }
 
-    const { instanceId, type, text, mediaUrl, mediaType, mimeType, quotedMessageId } = parsed.data;
+    const {
+      instanceId,
+      type,
+      text,
+      mediaUrl,
+      base64,
+      mediaType,
+      mimeType,
+      fileName,
+      latitude,
+      longitude,
+      locationName,
+      address,
+      contactName,
+      vcard,
+      quotedMessageId,
+    } = parsed.data;
     const remoteJid = parsed.data.remoteJid || toRemoteJid(parsed.data.phoneNumber);
 
     if (!remoteJid) {
@@ -34,8 +59,10 @@ export async function POST(req: NextRequest) {
 
     if (
       (type === 'text' && !text) ||
-      (type === 'media' && (!mediaUrl || !mediaType || !mimeType)) ||
-      (type === 'audio' && !mediaUrl)
+      (type === 'media' && (!(mediaUrl || base64) || !mediaType || !mimeType)) ||
+      (type === 'audio' && !(mediaUrl || base64)) ||
+      (type === 'location' && (latitude === undefined || longitude === undefined)) ||
+      (type === 'contact' && (!contactName || !vcard))
     ) {
       return NextResponse.json({ error: 'Missing required fields for the specified type' }, { status: 400 });
     }
@@ -49,6 +76,10 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
     const resolvedInstanceId = instance.id;
+    const authorization = authorizeGatewayRequest(req, instance);
+    if (!authorization.ok) {
+      return NextResponse.json({ error: authorization.error }, { status: authorization.status });
+    }
 
     const outboundId = db.enqueueOutboundMessage({
       instance_id: resolvedInstanceId,
@@ -60,6 +91,16 @@ export async function POST(req: NextRequest) {
       media_type: mediaType || null,
       mime_type: mimeType || null,
       quoted_message_id: quotedMessageId || null,
+      payload: {
+        base64: base64 || null,
+        fileName: fileName || null,
+        latitude,
+        longitude,
+        name: locationName || null,
+        address: address || null,
+        displayName: contactName || null,
+        vcard: vcard || null,
+      },
     });
 
     return NextResponse.json({
@@ -81,7 +122,7 @@ export async function POST(req: NextRequest) {
 
 function toRemoteJid(phoneNumber?: string) {
   if (!phoneNumber) return null;
-  if (phoneNumber.includes('@')) return phoneNumber;
+  if (phoneNumber.includes('@')) return phoneNumber.trim();
   const digits = phoneNumber.replace(/\D/g, '');
-  return digits ? `${digits}@s.whatsapp.net` : null;
+  return digits.length >= 7 && digits.length <= 15 ? `${digits}@s.whatsapp.net` : null;
 }

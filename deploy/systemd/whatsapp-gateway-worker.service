@@ -1,0 +1,19 @@
+[Unit]
+Description=WhatsApp Gateway Baileys worker
+After=network.target whatsapp-gateway-web.service
+
+[Service]
+Type=simple
+User=whatsapp-gateway
+Group=whatsapp-gateway
+WorkingDirectory=/opt/whatsapp-gateway
+EnvironmentFile=/opt/whatsapp-gateway/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run worker
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

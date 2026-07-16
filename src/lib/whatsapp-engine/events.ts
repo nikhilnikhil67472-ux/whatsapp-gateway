@@ -1,7 +1,6 @@
 import { normalizeBaileysMessage } from './normalize';
 import { processInboundMedia } from './media';
 import { processWithN8n } from '../ai/n8n-client';
-import { sendText, sendMedia, sendAudio } from './send';
 import { decrypt } from '../security/encrypt';
 import { getEventSettings, toJsonSafePayload } from './event-settings';
 import { db } from '../db/sqlite';
@@ -21,28 +20,21 @@ async function forwardEventToWebhook(instanceId: string, instance: any, eventTyp
   if (!settings.webhooks.forwarded_events.includes(eventType)) return;
   if (!instance?.n8n_webhook_url) return;
 
-  const n8nSecret = instance.n8n_secret_encrypted ? decrypt(instance.n8n_secret_encrypted) : null;
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (n8nSecret) headers.Authorization = `Bearer ${n8nSecret}`;
-
-  try {
-    await fetch(instance.n8n_webhook_url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        event: eventType,
-        instance: {
-          id: instanceId,
-          name: instance.instance_name,
-          client_id: instance.client_id,
-        },
-        data: toJsonSafePayload(payload),
-        timestamp: new Date().toISOString(),
-      }),
-    });
-  } catch (err) {
-    console.error(`[Baileys ${instanceId}] Failed to forward ${eventType} to webhook:`, err);
-  }
+  db.enqueueWebhookDelivery({
+    instance_id: instanceId,
+    event_type: eventType,
+    target_url: instance.n8n_webhook_url,
+    payload: {
+      event: eventType,
+      instance: {
+        id: instanceId,
+        name: instance.instance_name,
+        client_id: instance.client_id,
+      },
+      data: toJsonSafePayload(payload),
+      timestamp: new Date().toISOString(),
+    },
+  });
 }
 
 export function bindEvents(instanceId: string, sock: any) {
@@ -101,7 +93,10 @@ export function bindEvents(instanceId: string, sock: any) {
 
         // Process Media
         const processedMedia = eventSettings.messages.process_media_messages
-          ? await processInboundMedia(normalized)
+          ? await processInboundMedia(normalized, {
+              includeBase64: eventSettings.messages.include_media_base64,
+              reuploadRequest: (messageToUpdate) => sock.updateMediaMessage(messageToUpdate),
+            })
           : null;
         if (processedMedia) {
           db.addMediaAsset({
@@ -130,6 +125,7 @@ export function bindEvents(instanceId: string, sock: any) {
             clientId: instance.client_id,
             n8nWebhookUrl: instance.n8n_webhook_url,
             n8nSecret,
+            webhookSecret: instance.webhook_secret,
             normalizedMessage: normalized as any,
             processedMedia,
             dbMessageId,
@@ -151,27 +147,71 @@ export function bindEvents(instanceId: string, sock: any) {
               r.reply = true;
             }
 
-            let result;
+            let outboundId: string | null = null;
             if (r.type === 'text' && r.text) {
-              result = await sendText({ instanceId, remoteJid: normalized.remoteJid, text: r.text, quotedMessageId: normalized.messageId });
-            } else if (r.type === 'media' && r.mediaUrl && r.mediaType && r.mimeType) {
-              result = await sendMedia({ instanceId, remoteJid: normalized.remoteJid, mediaUrl: r.mediaUrl, mediaType: r.mediaType, mimeType: r.mimeType, caption: r.text });
-            } else if (r.type === 'audio' && r.audioUrl) {
-              result = await sendAudio({ instanceId, remoteJid: normalized.remoteJid, audioUrl: r.audioUrl });
-            }
-
-            if (result) {
-              db.addOutboundMessage({
+              outboundId = db.enqueueOutboundMessage({
                 instance_id: instanceId,
                 conversation_id: convId,
                 remote_jid: normalized.remoteJid,
-                reply_type: r.type || 'unknown',
-                text_content: r.text || null,
-                media_url: r.mediaUrl || r.audioUrl || null,
-                status: 'sent',
+                reply_type: 'text',
+                text_content: r.text,
+                quoted_message_id: normalized.messageId,
               });
+            } else if (r.type === 'media' && r.mediaUrl && r.mediaType && r.mimeType) {
+              outboundId = db.enqueueOutboundMessage({
+                instance_id: instanceId,
+                conversation_id: convId,
+                remote_jid: normalized.remoteJid,
+                reply_type: 'media',
+                text_content: r.text || null,
+                media_url: r.mediaUrl,
+                media_type: r.mediaType,
+                mime_type: r.mimeType,
+                quoted_message_id: normalized.messageId,
+                payload: { fileName: r.fileName || null },
+              });
+            } else if (r.type === 'audio' && r.audioUrl) {
+              outboundId = db.enqueueOutboundMessage({
+                instance_id: instanceId,
+                conversation_id: convId,
+                remote_jid: normalized.remoteJid,
+                reply_type: 'audio',
+                media_url: r.audioUrl,
+                mime_type: r.mimeType || null,
+                quoted_message_id: normalized.messageId,
+              });
+            } else if (r.type === 'location' && Number.isFinite(r.latitude) && Number.isFinite(r.longitude)) {
+              outboundId = db.enqueueOutboundMessage({
+                instance_id: instanceId,
+                conversation_id: convId,
+                remote_jid: normalized.remoteJid,
+                reply_type: 'location',
+                quoted_message_id: normalized.messageId,
+                payload: {
+                  latitude: r.latitude,
+                  longitude: r.longitude,
+                  name: r.name || null,
+                  address: r.address || null,
+                },
+              });
+            } else if (r.type === 'contact' && r.displayName && r.vcard) {
+              outboundId = db.enqueueOutboundMessage({
+                instance_id: instanceId,
+                conversation_id: convId,
+                remote_jid: normalized.remoteJid,
+                reply_type: 'contact',
+                quoted_message_id: normalized.messageId,
+                payload: {
+                  displayName: r.displayName,
+                  vcard: r.vcard,
+                },
+              });
+            }
+
+            if (outboundId) {
+              console.log(`[Baileys ${instanceId}] Queued AI reply ${outboundId}.`);
             } else {
-              console.log(`[Baileys ${instanceId}] send function returned empty result. Failed to send.`);
+              console.log(`[Baileys ${instanceId}] Webhook reply did not match a supported outbound type.`);
             }
           } else {
             console.log(`[Baileys ${instanceId}] Webhook returned success, but reply.reply is missing or false. Not sending response back to WhatsApp.`);

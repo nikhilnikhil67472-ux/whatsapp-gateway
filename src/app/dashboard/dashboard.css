@@ -103,6 +103,31 @@ body {
   color: #ffffff;
 }
 
+.nav-item.active {
+  color: #ffffff;
+  background: #263244;
+  box-shadow: inset 3px 0 0 #60a5fa;
+}
+
+.sidebar-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: auto 14px 0;
+  padding: 11px 12px;
+  color: #cbd5e1;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-logout:hover {
+  color: #ffffff;
+  background: var(--sidebar-panel);
+}
+
 .sidebar-footer {
   margin-top: auto;
   padding: 18px 24px 24px;
@@ -121,6 +146,94 @@ body {
 .page-shell {
   max-width: 1180px;
   margin: 0 auto;
+}
+
+.instance-bar {
+  max-width: 1180px;
+  margin: -12px auto 26px;
+  border-bottom: 1px solid var(--border);
+}
+
+.instance-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.instance-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 0;
+}
+
+.instance-context strong {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.instance-context span:last-child {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  text-transform: capitalize;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.status-dot.status-connected {
+  background: var(--success);
+}
+
+.status-dot.status-waiting_qr,
+.status-dot.status-created,
+.status-dot.status-connecting,
+.status-dot.status-reconnecting {
+  background: #f59e0b;
+}
+
+.status-dot.status-failed,
+.status-dot.status-logged_out,
+.status-dot.status-disconnected {
+  background: var(--danger);
+}
+
+.instance-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.instance-tabs a {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.instance-tabs a:hover,
+.instance-tabs a.active {
+  color: var(--primary);
+}
+
+.instance-tabs a.active {
+  border-bottom-color: var(--primary);
+  font-weight: 650;
 }
 
 .page-header {
@@ -197,6 +310,96 @@ body {
   padding: 24px;
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--border);
+}
+
+.api-key-reveal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.api-key-reveal code {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--text-main);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.config-list {
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.config-row {
+  min-height: 84px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-row:last-child {
+  border-bottom: 0;
+}
+
+.config-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 7px;
+}
+
+.config-row strong,
+.config-row code {
+  display: block;
+}
+
+.config-row code {
+  margin-top: 5px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.config-ok,
+.config-warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.config-ok {
+  color: var(--success);
+}
+
+.config-warn {
+  color: var(--warning);
 }
 
 .table-card {
@@ -764,6 +967,10 @@ pre {
     display: none;
   }
 
+  .sidebar-logout {
+    margin: 0 14px 12px;
+  }
+
   .main-content {
     padding: 24px 18px;
   }
@@ -771,6 +978,14 @@ pre {
   .page-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .instance-bar-inner {
+    display: block;
+  }
+
+  .instance-context {
+    padding-bottom: 4px;
   }
 
   .metric-grid,
@@ -812,5 +1027,14 @@ pre {
   .webhook-test-box {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .config-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .config-ok,
+  .config-warn {
+    grid-column: 2;
   }
 }

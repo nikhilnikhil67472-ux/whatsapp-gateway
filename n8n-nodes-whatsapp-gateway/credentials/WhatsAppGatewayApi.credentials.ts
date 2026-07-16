@@ -18,5 +18,14 @@ export class WhatsAppGatewayApi implements ICredentialType {
       description: 'Base URL of your WhatsApp AI Gateway, without a trailing slash',
       required: true,
     },
+    {
+      displayName: 'API Key',
+      name: 'apiKey',
+      type: 'string',
+      typeOptions: { password: true },
+      default: '',
+      description: 'Global gateway key or the instance API key shown when the instance was created',
+      required: true,
+    },
   ];
 }
