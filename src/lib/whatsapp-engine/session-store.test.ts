@@ -43,4 +43,3 @@ test('legacy multi-file auth is fully migrated, encrypted, and removable', async
   assert.ok(storedKeys.every((row) => row.data.startsWith('wag-encrypted:v1:')));
   assert.equal(fs.existsSync(sessionDirectory), false);
 });
-

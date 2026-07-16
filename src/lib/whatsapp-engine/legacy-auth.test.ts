@@ -11,7 +11,6 @@ test('legacy auth filenames use the same sanitization as Baileys', () => {
     'sender-key-group__a-b.json',
   );
 });
-
 test('legacy auth filenames are parsed with longest key type first', () => {
   assert.deepEqual(
     parseLegacyAuthKeyFile('sender-key-memory-contact.json'),
@@ -34,4 +33,3 @@ test('credential and unknown files are not parsed as signal keys', () => {
   assert.equal(parseLegacyAuthKeyFile('unknown-key.json'), null);
   assert.equal(parseLegacyAuthKeyFile('pre-key-.json'), null);
 });
-

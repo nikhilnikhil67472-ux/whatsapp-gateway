@@ -21,7 +21,6 @@ export function legacyAuthFileName(
     .replace(/\//g, '__')
     .replace(/:/g, '-');
 }
-
 export function parseLegacyAuthKeyFile(fileName: string): {
   keyType: keyof SignalDataTypeMap;
   keyId: string;
@@ -37,4 +36,3 @@ export function parseLegacyAuthKeyFile(fileName: string): {
 
   return null;
 }
-
