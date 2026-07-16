@@ -215,7 +215,17 @@ export class WhatsAppEngineManager {
 
   static async shutdownAll() {
     await Promise.allSettled(
-      [...engineState.sockets.keys()].map((instanceId) => this.stopInstance(instanceId)),
+      [...engineState.sockets.entries()].map(async ([instanceId, sock]) => {
+        clearReconnectTimer(instanceId);
+        engineState.sockets.delete(instanceId);
+        engineState.intentionalSockets.add(sock);
+        sock.end?.(new Error('Worker is shutting down'));
+        db.updateInstance(instanceId, {
+          status: 'disconnected',
+          qr_base64: null,
+          last_disconnection_at: db.now(),
+        });
+      }),
     );
   }
 }
