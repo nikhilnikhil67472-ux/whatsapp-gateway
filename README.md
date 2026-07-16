@@ -166,7 +166,7 @@ data/gateway.db-shm
 public/media/
 ```
 
-Schema upgrades are additive and run at process startup. Legacy plaintext Baileys auth rows are encrypted automatically when read. Legacy filesystem sessions remain import-compatible.
+Schema upgrades are additive and run at process startup. Legacy plaintext Baileys auth rows and multi-file sessions are bulk-imported into encrypted SQLite storage. Set `BAILEYS_DELETE_LEGACY_AUTH_AFTER_MIGRATION=true` only after taking a backup to remove each legacy JSON file after its encrypted database row is verified.
 
 The Nginx and systemd examples are in `deploy/`. Keep the database and media directory on persistent storage.
 

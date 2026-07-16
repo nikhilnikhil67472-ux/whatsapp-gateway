@@ -1142,6 +1142,18 @@ export const db = {
     return new Map(rows.map((row) => [row.key_id, row.data]));
   },
 
+  listAuthKeys(instanceId: string) {
+    return sqlite.prepare(`
+      SELECT key_type, key_id, data
+      FROM baileys_auth_keys
+      WHERE instance_id = ?
+    `).all(instanceId) as Array<{
+      key_type: string;
+      key_id: string;
+      data: string;
+    }>;
+  },
+
   saveAuthKey(instanceId: string, keyType: string, keyId: string, data: string | null) {
     if (data === null) {
       sqlite.prepare('DELETE FROM baileys_auth_keys WHERE instance_id = ? AND key_type = ? AND key_id = ?')
