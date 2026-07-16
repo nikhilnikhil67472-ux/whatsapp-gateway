@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,7 @@ function getContentType(filePath: string) {
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   try {
     const { path: pathParts } = await params;
-    const mediaRoot = path.resolve(process.cwd(), 'public', 'media');
+    const mediaRoot = path.resolve(/* turbopackIgnore: true */ process.cwd(), 'public', 'media');
     const filePath = path.resolve(mediaRoot, ...pathParts);
 
     if (!filePath.startsWith(mediaRoot + path.sep)) {
@@ -40,12 +41,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ pat
       return NextResponse.json({ error: 'Media file not found' }, { status: 404 });
     }
 
-    const file = await fs.promises.readFile(filePath);
+    const file = Readable.toWeb(fs.createReadStream(filePath)) as ReadableStream;
     return new NextResponse(file, {
       status: 200,
       headers: {
         'Content-Type': getContentType(filePath),
-        'Content-Length': String(file.length),
+        'Content-Length': String(stat.size),
         'Cache-Control': 'public, max-age=31536000, immutable',
       },
     });

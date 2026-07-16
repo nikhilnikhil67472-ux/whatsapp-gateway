@@ -2,6 +2,7 @@ import { downloadMediaMessage, WAMessage } from '@whiskeysockets/baileys';
 import { NormalizedWhatsAppMessage } from './normalize';
 import fs from 'fs';
 import path from 'path';
+import { Transform } from 'stream';
 
 export type ProcessedMedia = {
   mediaId?: string;
@@ -10,6 +11,8 @@ export type ProcessedMedia = {
   fileName: string;
   storagePath?: string;
   publicUrl?: string;
+  base64Data?: string;
+  sizeBytes?: number;
   transcription?: string;
   aiDescription?: string;
 };
@@ -36,13 +39,18 @@ function getPublicMediaUrl(storagePath: string) {
 }
 
 export async function processInboundMedia(
-  message: NormalizedWhatsAppMessage
+  message: NormalizedWhatsAppMessage,
+  options: {
+    includeBase64?: boolean;
+    reuploadRequest?: (message: WAMessage) => Promise<WAMessage>;
+  } = {},
 ): Promise<ProcessedMedia | null> {
-  if (['text', 'unknown'].includes(message.type)) return null;
+  if (!['image', 'voice', 'audio', 'video', 'document', 'sticker'].includes(message.type)) return null;
 
   const ext = getExtension(message.mimeType);
   const defaultFileName = `${message.type}_${Date.now()}.${ext}`;
-  const fileName = message.fileName || defaultFileName;
+  const requestedFileName = path.basename(message.fileName || defaultFileName);
+  const fileName = requestedFileName.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 180) || defaultFileName;
   
   const result: ProcessedMedia = {
     mediaType: message.type,
@@ -53,27 +61,47 @@ export async function processInboundMedia(
   try {
     const rawMsg = message.raw as WAMessage;
     
-    // Download media as buffer using Baileys
-    const buffer = await downloadMediaMessage(
+    const stream = await downloadMediaMessage(
       rawMsg,
-      'buffer',
+      'stream',
       {},
-      { 
+      {
         logger: console as any,
-        reuploadRequest: () => new Promise((resolve) => resolve(rawMsg))
-      }
-    ) as Buffer;
-    
-    if (!buffer) return result;
+        reuploadRequest: options.reuploadRequest || (async () => rawMsg),
+      },
+    ) as Transform;
 
-    const safeRemoteJid = message.remoteJid.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `media/${message.instanceId}/${safeRemoteJid}/${message.messageId}/${fileName}`;
-    const absolutePath = path.join(process.cwd(), 'public', storagePath);
+    const maxBytes = Number(process.env.MAX_INBOUND_MEDIA_BYTES || 20 * 1024 * 1024);
+    const chunks: Buffer[] = [];
+    let sizeBytes = 0;
+
+    for await (const chunk of stream) {
+      const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      sizeBytes += bufferChunk.length;
+      if (sizeBytes > maxBytes) {
+        stream.destroy();
+        throw new Error(`Inbound media exceeds the ${maxBytes} byte limit`);
+      }
+      chunks.push(bufferChunk);
+    }
+
+    const buffer = Buffer.concat(chunks);
+    if (!buffer.length) return result;
+
+    const safeMessageId = message.messageId.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `media/${message.instanceId}/${safeMessageId}/${fileName}`;
+    const publicRoot = path.resolve(process.cwd(), 'public');
+    const absolutePath = path.resolve(publicRoot, storagePath);
+    if (!absolutePath.startsWith(`${publicRoot}${path.sep}`)) {
+      throw new Error('Refusing to write media outside the public directory');
+    }
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
     await fs.promises.writeFile(absolutePath, buffer);
 
     result.storagePath = storagePath;
     result.publicUrl = getPublicMediaUrl(storagePath);
+    result.sizeBytes = sizeBytes;
+    if (options.includeBase64) result.base64Data = buffer.toString('base64');
 
     return result;
   } catch (err) {

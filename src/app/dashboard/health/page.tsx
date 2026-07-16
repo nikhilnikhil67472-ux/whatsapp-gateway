@@ -1,4 +1,4 @@
-import { Activity, CheckCircle2, Database, Server } from 'lucide-react';
+import { Activity, CheckCircle2, CircleAlert, Database, Server } from 'lucide-react';
 import { db } from '@/lib/db/sqlite';
 
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,14 @@ export const revalidate = 0;
 export default async function HealthPage() {
   const instances = db.listInstances();
   const connected = instances.filter((instance: any) => instance.status === 'connected').length;
-  const waitingQr = instances.filter((instance: any) => instance.status === 'waiting_qr').length;
+  const queues = db.getQueueStats();
+  const queuedOutbound = (queues.outbound.pending || 0) + (queues.outbound.retry || 0);
+  const queuedWebhooks = (queues.webhooks.pending || 0) + (queues.webhooks.retry || 0);
+  const securityReady = Boolean(
+    process.env.GATEWAY_API_KEY
+    && process.env.DASHBOARD_PASSWORD
+    && (process.env.AUTH_SECRET || process.env.ENCRYPTION_KEY || '').length >= 32,
+  );
 
   return (
     <div className="page-shell">
@@ -35,8 +42,8 @@ export default async function HealthPage() {
           <strong>{connected}</strong>
         </div>
         <div className="metric-card">
-          <span>Waiting QR</span>
-          <strong>{waitingQr}</strong>
+          <span>Queued work</span>
+          <strong>{queuedOutbound + queuedWebhooks}</strong>
         </div>
       </div>
 
@@ -68,6 +75,22 @@ export default async function HealthPage() {
             <div>
               <strong>WhatsApp instances</strong>
               <p>{instances.length > 0 ? `${instances.length} instance(s) created.` : 'Create an instance and scan QR to start.'}</p>
+            </div>
+          </div>
+          <div className={`setup-step ${securityReady ? 'done' : ''}`}>
+            <div className="setup-step-icon">
+              {securityReady ? <CheckCircle2 size={18} /> : <CircleAlert size={18} />}
+            </div>
+            <div>
+              <strong>Production security</strong>
+              <p>{securityReady ? 'Dashboard and external API authentication are configured.' : 'Complete the missing values shown under Global Config.'}</p>
+            </div>
+          </div>
+          <div className="setup-step done">
+            <div className="setup-step-icon"><Activity size={18} /></div>
+            <div>
+              <strong>Delivery queues</strong>
+              <p>{queuedOutbound} WhatsApp message(s) and {queuedWebhooks} webhook delivery attempt(s) pending.</p>
             </div>
           </div>
         </div>

@@ -39,6 +39,7 @@ export async function enrichSenderIdentity(sock: any, message: NormalizedWhatsAp
     const phone = jidToPhone(jid);
     if (phone) {
       message.senderPhoneNumber = phone;
+      message.senderPhoneJid = jid;
       message.senderDisplayNumber = `+${phone}`;
       message.senderLid = jidToLid(message.senderJid) || jidToLid(message.remoteJid);
       return message;
@@ -52,6 +53,7 @@ export async function enrichSenderIdentity(sock: any, message: NormalizedWhatsAp
       const phone = jidToPhone(pnJid);
       if (phone) {
         message.senderPhoneNumber = phone;
+        message.senderPhoneJid = pnJid;
         message.senderDisplayNumber = `+${phone}`;
         message.senderLid = jidToLid(lidJid);
         message.senderAltJid = pnJid;
@@ -63,6 +65,7 @@ export async function enrichSenderIdentity(sock: any, message: NormalizedWhatsAp
   }
 
   message.senderPhoneNumber = null;
+  message.senderPhoneJid = null;
   message.senderDisplayNumber = null;
   message.senderLid = jidToLid(message.senderJid) || jidToLid(message.remoteJid);
   return message;

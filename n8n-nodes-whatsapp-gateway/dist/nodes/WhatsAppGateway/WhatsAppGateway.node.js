@@ -107,6 +107,14 @@ class WhatsAppGateway {
                             name: 'Audio',
                             value: 'audio',
                         },
+                        {
+                            name: 'Location',
+                            value: 'location',
+                        },
+                        {
+                            name: 'Contact',
+                            value: 'contact',
+                        },
                     ],
                     default: 'text',
                 },
@@ -121,6 +129,21 @@ class WhatsAppGateway {
                     description: 'Text message or media caption',
                 },
                 {
+                    displayName: 'Media Source',
+                    name: 'mediaSource',
+                    type: 'options',
+                    options: [
+                        { name: 'URL', value: 'url' },
+                        { name: 'Base64', value: 'base64' },
+                    ],
+                    default: 'url',
+                    displayOptions: {
+                        show: {
+                            type: ['media', 'audio'],
+                        },
+                    },
+                },
+                {
                     displayName: 'Media URL',
                     name: 'mediaUrl',
                     type: 'string',
@@ -129,6 +152,20 @@ class WhatsAppGateway {
                     displayOptions: {
                         show: {
                             type: ['media', 'audio'],
+                            mediaSource: ['url'],
+                        },
+                    },
+                },
+                {
+                    displayName: 'Base64 Data',
+                    name: 'base64',
+                    type: 'string',
+                    typeOptions: { rows: 3 },
+                    default: '',
+                    displayOptions: {
+                        show: {
+                            type: ['media', 'audio'],
+                            mediaSource: ['base64'],
                         },
                     },
                 },
@@ -158,6 +195,51 @@ class WhatsAppGateway {
                     },
                 },
                 {
+                    displayName: 'Latitude',
+                    name: 'latitude',
+                    type: 'number',
+                    default: 0,
+                    displayOptions: { show: { type: ['location'] } },
+                },
+                {
+                    displayName: 'Longitude',
+                    name: 'longitude',
+                    type: 'number',
+                    default: 0,
+                    displayOptions: { show: { type: ['location'] } },
+                },
+                {
+                    displayName: 'Location Name',
+                    name: 'locationName',
+                    type: 'string',
+                    default: '',
+                    displayOptions: { show: { type: ['location'] } },
+                },
+                {
+                    displayName: 'Address',
+                    name: 'address',
+                    type: 'string',
+                    default: '',
+                    displayOptions: { show: { type: ['location'] } },
+                },
+                {
+                    displayName: 'Contact Name',
+                    name: 'contactName',
+                    type: 'string',
+                    default: '',
+                    displayOptions: { show: { type: ['contact'] } },
+                    required: true,
+                },
+                {
+                    displayName: 'vCard',
+                    name: 'vcard',
+                    type: 'string',
+                    typeOptions: { rows: 6 },
+                    default: '',
+                    displayOptions: { show: { type: ['contact'] } },
+                    required: true,
+                },
+                {
                     displayName: 'MIME Type',
                     name: 'mimeType',
                     type: 'string',
@@ -183,6 +265,8 @@ class WhatsAppGateway {
             const type = this.getNodeParameter('type', i);
             const text = this.getNodeParameter('text', i, '');
             const mediaUrl = this.getNodeParameter('mediaUrl', i, '');
+            const mediaSource = this.getNodeParameter('mediaSource', i, 'url');
+            const base64 = this.getNodeParameter('base64', i, '');
             const mediaType = this.getNodeParameter('mediaType', i, '');
             const mimeType = this.getNodeParameter('mimeType', i, '');
             const body = {
@@ -197,17 +281,31 @@ class WhatsAppGateway {
                 body.remoteJid = this.getNodeParameter('remoteJid', i);
             }
             if (type === 'media' || type === 'audio') {
-                body.mediaUrl = mediaUrl;
+                if (mediaSource === 'base64')
+                    body.base64 = base64;
+                else
+                    body.mediaUrl = mediaUrl;
             }
             if (type === 'media') {
                 body.mediaType = mediaType;
                 body.mimeType = mimeType;
+            }
+            if (type === 'location') {
+                body.latitude = this.getNodeParameter('latitude', i);
+                body.longitude = this.getNodeParameter('longitude', i);
+                body.locationName = this.getNodeParameter('locationName', i, '');
+                body.address = this.getNodeParameter('address', i, '');
+            }
+            if (type === 'contact') {
+                body.contactName = this.getNodeParameter('contactName', i);
+                body.vcard = this.getNodeParameter('vcard', i);
             }
             const options = {
                 method: 'POST',
                 url: `${credentials.baseUrl.replace(/\/$/, '')}/api/whatsapp/send`,
                 headers: {
                     Accept: 'application/json',
+                    Authorization: `Bearer ${credentials.apiKey}`,
                 },
                 body,
                 json: true,

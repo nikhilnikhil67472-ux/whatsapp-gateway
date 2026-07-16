@@ -1,6 +1,8 @@
 import { NormalizedWhatsAppMessage } from '../whatsapp-engine/normalize';
 import { ProcessedMedia } from '../whatsapp-engine/media';
 import { db } from '../db/sqlite';
+import crypto from 'crypto';
+import { createWebhookHeaders } from '../webhooks/signature';
 
 export interface N8nProcessParams {
   instanceId: string;
@@ -8,6 +10,7 @@ export interface N8nProcessParams {
   clientId?: string;
   n8nWebhookUrl: string;
   n8nSecret: string | null;
+  webhookSecret?: string | null;
   normalizedMessage: NormalizedWhatsAppMessage & { raw: any };
   processedMedia: ProcessedMedia | null;
   dbMessageId: string;
@@ -20,6 +23,7 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
     clientId,
     n8nWebhookUrl,
     n8nSecret,
+    webhookSecret,
     normalizedMessage,
     processedMedia,
     dbMessageId
@@ -40,8 +44,10 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
   // 2. Prepare payload
   const senderPhone = normalizedMessage.senderPhoneNumber || null;
   const senderLid = normalizedMessage.senderLid || null;
-  const senderJid = normalizedMessage.senderJid || normalizedMessage.remoteJid;
+  const senderJid = normalizedMessage.senderPhoneJid || normalizedMessage.senderJid || normalizedMessage.remoteJid;
   const payload = {
+    event: 'message.received',
+    timestamp: new Date().toISOString(),
     instance: {
       id: instanceId,
       name: instanceName,
@@ -62,7 +68,8 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
     message: {
       id: dbMessageId,
       whatsapp_id: normalizedMessage.messageId,
-      from: normalizedMessage.remoteJid,
+      from: normalizedMessage.isGroup ? normalizedMessage.remoteJid : senderJid,
+      chat_jid: normalizedMessage.remoteJid,
       from_number: senderPhone,
       from_lid: senderLid,
       push_name: normalizedMessage.pushName,
@@ -70,22 +77,28 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
       type: normalizedMessage.type,
       text: normalizedMessage.text,
       caption: normalizedMessage.caption,
+      timestamp: normalizedMessage.timestamp,
+      data: normalizedMessage.data,
     },
     media: processedMedia ? {
       type: processedMedia.mediaType,
       mime_type: processedMedia.mimeType,
-      url: processedMedia.publicUrl
+      file_name: processedMedia.fileName,
+      size_bytes: processedMedia.sizeBytes,
+      url: processedMedia.publicUrl,
+      base64_data: processedMedia.base64Data,
     } : null,
     history
   };
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  };
-
-  if (n8nSecret) {
-    headers['Authorization'] = `Bearer ${n8nSecret}`;
-  }
+  const deliveryId = crypto.randomUUID();
+  const serializedPayload = JSON.stringify(payload);
+  const headers = createWebhookHeaders({
+    payload: serializedPayload,
+    eventType: 'message.received',
+    deliveryId,
+    secret: webhookSecret,
+    authorization: n8nSecret,
+  });
 
   // 3. Log AI run start
   const runId = db.createAiRun({
@@ -96,13 +109,19 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
   });
 
   // 4. Fire Webhook
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Number(process.env.AI_WEBHOOK_TIMEOUT_MS || 45_000),
+  );
+
   try {
     const start = Date.now();
-    console.log(`[n8n] Sending payload to webhook...`);
     const response = await fetch(n8nWebhookUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(payload)
+      body: serializedPayload,
+      signal: controller.signal,
     });
 
     console.log(`[n8n] Webhook responded with status: ${response.status}`);
@@ -110,7 +129,7 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
     const duration = Date.now() - start;
 
     if (!response.ok) {
-      const errText = await response.text();
+      const errText = (await response.text()).slice(0, 2_000);
       db.updateAiRun(runId, {
         status: 'error',
         error_message: `HTTP ${response.status}: ${errText}`,
@@ -144,9 +163,11 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
   } catch (error: any) {
     db.updateAiRun(runId, {
       status: 'error',
-      error_message: error.message,
+      error_message: error.name === 'AbortError' ? 'AI webhook request timed out' : error.message,
       completed_at: new Date().toISOString()
     });
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }

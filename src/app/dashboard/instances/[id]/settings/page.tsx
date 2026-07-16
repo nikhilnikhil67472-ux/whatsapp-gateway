@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
-import { Save, TestTube2 } from 'lucide-react';
+import { Copy, KeyRound, Save, TestTube2 } from 'lucide-react';
 import { DEFAULT_EVENT_SETTINGS, getEventSettings } from '@/lib/whatsapp-engine/event-settings';
 
 type SettingPath =
@@ -37,23 +37,31 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
+  const [n8nSecret, setN8nSecret] = useState('');
+  const [clearN8nSecret, setClearN8nSecret] = useState(false);
+  const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [rotatingKey, setRotatingKey] = useState(false);
+  const [newApiKey, setNewApiKey] = useState('');
 
   useEffect(() => {
-    fetchInstance();
-  }, [id]);
-
-  async function fetchInstance() {
-    const res = await fetch(`/api/instances/${id}`, { cache: 'no-store' });
-    const json = await res.json();
-    if (json.success) {
-      const data = json.data;
-      setInstance({
-        ...data,
-        event_settings: getEventSettings(data),
-      });
+    let active = true;
+    async function loadInstance() {
+      const res = await fetch(`/api/instances/${id}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (active && json.success) {
+        const data = json.data;
+        setInstance({
+          ...data,
+          event_settings: getEventSettings(data),
+        });
+      }
+      if (active) setLoading(false);
     }
-    setLoading(false);
-  }
+    void loadInstance();
+    return () => {
+      active = false;
+    };
+  }, [id]);
 
   function setEventSetting(path: SettingPath, value: boolean | string | string[]) {
     const [group, key] = path;
@@ -125,6 +133,7 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setSaveResult(null);
 
     try {
       const eventSettings = getEventSettings(instance);
@@ -136,16 +145,40 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
           n8n_webhook_url: instance.n8n_webhook_url || null,
           agent_mode: instance.agent_mode || 'text_only',
           event_settings: eventSettings,
+          n8n_secret: n8nSecret || undefined,
+          clear_n8n_secret: clearN8nSecret,
         }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json.error || 'Failed to save settings');
 
-      alert('Settings saved successfully');
+      setInstance(json.data);
+      setN8nSecret('');
+      setClearN8nSecret(false);
+      setSaveResult({ ok: true, message: 'Settings saved successfully.' });
     } catch (err: any) {
-      alert(err.message);
+      setSaveResult({ ok: false, message: err.message });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function rotateApiKey() {
+    setRotatingKey(true);
+    setSaveResult(null);
+    try {
+      const response = await fetch(`/api/instances/${id}/api-key`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to rotate API key');
+      setNewApiKey(result.apiKey);
+      setSaveResult({ ok: true, message: 'A new instance API key was generated.' });
+    } catch (rotateError) {
+      setSaveResult({
+        ok: false,
+        message: rotateError instanceof Error ? rotateError.message : 'Failed to rotate API key',
+      });
+    } finally {
+      setRotatingKey(false);
     }
   }
 
@@ -225,6 +258,32 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
             </select>
           </div>
 
+          <div className="form-row">
+            <label htmlFor="n8n-secret">Webhook bearer secret</label>
+            <input
+              id="n8n-secret"
+              type="password"
+              value={n8nSecret}
+              onChange={(event) => {
+                setN8nSecret(event.target.value);
+                setClearN8nSecret(false);
+              }}
+              placeholder={instance.has_n8n_secret ? 'Stored securely. Enter a new value to replace it.' : 'Optional bearer token'}
+              autoComplete="new-password"
+            />
+            <p className="help-text">Sent as the Authorization bearer token and encrypted at rest.</p>
+          </div>
+          {instance.has_n8n_secret && (
+            <CheckboxRow
+              label="Remove the stored bearer secret"
+              checked={clearN8nSecret}
+              onChange={(checked) => {
+                setClearN8nSecret(checked);
+                if (checked) setN8nSecret('');
+              }}
+            />
+          )}
+
           <div id="webhook-test" className="webhook-test-box">
             <div>
               <strong>Test AI Automation Link</strong>
@@ -286,6 +345,12 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
               checked={settings.messages.process_media_messages}
               onChange={(checked) => setEventSetting(['messages', 'process_media_messages'], checked)}
             />
+            <CheckboxRow
+              label="Include decrypted media as Base64 in AI payloads"
+              checked={settings.messages.include_media_base64}
+              onChange={(checked) => setEventSetting(['messages', 'include_media_base64'], checked)}
+            />
+            <p className="help-text">Use this for voice transcription and image vision when your AI agent cannot download the media URL.</p>
           </div>
 
           <div className="card settings-card">
@@ -391,6 +456,34 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
             <Save size={16} /> {saving ? 'Saving...' : 'Save Settings'}
           </button>
         </div>
+
+        <div className="card settings-card">
+          <h2>Outbound API Key</h2>
+          <p className="help-text">
+            Active key prefix: <code>{instance.api_key_prefix || 'legacy instance'}</code>
+          </p>
+          {newApiKey && (
+            <div className="api-key-reveal" style={{ marginTop: '14px' }}>
+              <code>{newApiKey}</code>
+              <button
+                type="button"
+                className="icon-btn"
+                title="Copy API key"
+                onClick={() => navigator.clipboard.writeText(newApiKey)}
+              >
+                <Copy size={17} />
+              </button>
+            </div>
+          )}
+          <button type="button" className="btn btn-secondary" style={{ marginTop: '14px' }} onClick={rotateApiKey} disabled={rotatingKey}>
+            <KeyRound size={16} /> {rotatingKey ? 'Generating...' : 'Rotate API Key'}
+          </button>
+        </div>
+        {saveResult && (
+          <div className={`test-result ${saveResult.ok ? 'success' : 'error'}`} role="status">
+            <strong>{saveResult.message}</strong>
+          </div>
+        )}
       </form>
 
       <div className="card" style={{ marginTop: '24px', backgroundColor: '#fef2f2', borderColor: '#fca5a5' }}>

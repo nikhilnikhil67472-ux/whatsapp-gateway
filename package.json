@@ -10,7 +10,8 @@
     "start:all": "concurrently \"npm run start\" \"npm run worker\"",
     "worker": "tsx src/worker/index.ts",
     "postinstall": "node scripts/patch-whatsapp-rust-bridge.cjs",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test src/lib/security/security.test.ts src/lib/whatsapp-engine/event-settings.test.ts src/lib/whatsapp-engine/manager-state.test.ts"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc13",

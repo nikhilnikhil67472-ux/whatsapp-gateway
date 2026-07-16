@@ -7,6 +7,7 @@ export type WhatsAppEventSettings = {
     log_deleted_messages: boolean;
     track_receipts: boolean;
     process_media_messages: boolean;
+    include_media_base64: boolean;
   };
   groups: {
     ignore_group_messages: boolean;
@@ -46,6 +47,7 @@ export const DEFAULT_EVENT_SETTINGS: WhatsAppEventSettings = {
     log_deleted_messages: false,
     track_receipts: true,
     process_media_messages: true,
+    include_media_base64: false,
   },
   groups: {
     ignore_group_messages: true,

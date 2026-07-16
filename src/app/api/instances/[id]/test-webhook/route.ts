@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db/sqlite';
+import crypto from 'crypto';
+import { decrypt } from '@/lib/security/encrypt';
+import { createWebhookHeaders } from '@/lib/webhooks/signature';
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -45,10 +48,20 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     };
 
     const start = Date.now();
+    const serializedPayload = JSON.stringify(payload);
     const response = await fetch(instance.n8n_webhook_url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: createWebhookHeaders({
+        payload: serializedPayload,
+        eventType: 'webhook.test',
+        deliveryId: crypto.randomUUID(),
+        secret: instance.webhook_secret,
+        authorization: instance.n8n_secret_encrypted
+          ? decrypt(instance.n8n_secret_encrypted)
+          : null,
+      }),
+      body: serializedPayload,
+      signal: AbortSignal.timeout(Number(process.env.WEBHOOK_TIMEOUT_MS || 15_000)),
     });
     const rawText = await response.text();
     let responsePayload: any = rawText;

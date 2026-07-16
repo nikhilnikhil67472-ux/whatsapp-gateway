@@ -1,6 +1,6 @@
-import Link from 'next/link';
-import { Activity, Bot, Settings, List } from 'lucide-react';
+import { Bot } from 'lucide-react';
 import './dashboard.css'; // We will use plain CSS
+import DashboardNav from './DashboardNav';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -15,20 +15,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span>WhatsApp automation</span>
           </div>
         </div>
-        <nav className="sidebar-nav">
-          <Link href="/dashboard/instances" className="nav-item">
-            <List size={20} />
-            Instances
-          </Link>
-          <Link href="/dashboard/health" className="nav-item">
-            <Activity size={20} />
-            Health
-          </Link>
-          <Link href="/dashboard/settings" className="nav-item">
-            <Settings size={20} />
-            Global Config
-          </Link>
-        </nav>
+        <DashboardNav />
         <div className="sidebar-footer">
           Baileys powered local gateway for n8n and custom AI agents.
         </div>
