@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Bot, CheckCircle2, MessageSquare, QrCode, Settings, TestTube2, XCircle } from 'lucide-react';
 import { db } from '@/lib/db/sqlite';
+import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -20,7 +21,8 @@ function Step({ done, title, detail, href, action }: { done: boolean; title: str
 
 export default async function InstanceOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const instance = db.getInstance(id);
+  const session = await getServerDashboardSession();
+  const instance = db.getInstance(id, session.organizationId);
   if (!instance) return <div>Instance not found</div>;
 
   const stats = db.getInstanceStats(id);

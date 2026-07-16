@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(
     searchParams.get('configuration') === 'missing'
@@ -24,7 +25,7 @@ export default function LoginForm() {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email: email.trim() || undefined, password }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Login failed');
@@ -44,6 +45,17 @@ export default function LoginForm() {
       <h1>Dashboard login</h1>
       <p className="login-copy">Manage instances, QR pairing, webhooks, and delivery health.</p>
 
+      <label htmlFor="dashboard-email">Email</label>
+      <input
+        id="dashboard-email"
+        type="email"
+        autoComplete="username"
+        value={email}
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder="Optional for the main admin"
+        autoFocus
+      />
+
       <label htmlFor="dashboard-password">Password</label>
       <input
         id="dashboard-password"
@@ -52,7 +64,6 @@ export default function LoginForm() {
         value={password}
         onChange={(event) => setPassword(event.target.value)}
         required
-        autoFocus
       />
 
       {error && <p className="login-error" role="alert">{error}</p>}

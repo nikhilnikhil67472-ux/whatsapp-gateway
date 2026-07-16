@@ -39,6 +39,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   const [testResult, setTestResult] = useState<any>(null);
   const [n8nSecret, setN8nSecret] = useState('');
   const [clearN8nSecret, setClearN8nSecret] = useState(false);
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [clearAiApiKey, setClearAiApiKey] = useState(false);
   const [saveResult, setSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [rotatingKey, setRotatingKey] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
@@ -142,8 +144,29 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ai_enabled: instance.ai_enabled ?? true,
+          ai_auto_reply: instance.ai_auto_reply ?? true,
+          ai_provider: instance.ai_provider || 'webhook',
+          ai_model: instance.ai_model || null,
+          ai_system_prompt: instance.ai_system_prompt || null,
+          ai_memory_messages: Number(instance.ai_memory_messages || 20),
+          ai_api_key: aiApiKey || undefined,
+          clear_ai_api_key: clearAiApiKey,
           n8n_webhook_url: instance.n8n_webhook_url || null,
           agent_mode: instance.agent_mode || 'text_only',
+          media_transcription_enabled: Boolean(instance.media_transcription_enabled),
+          media_vision_enabled: Boolean(instance.media_vision_enabled),
+          document_extraction_enabled: Boolean(instance.document_extraction_enabled),
+          storage_provider: instance.storage_provider || 'local',
+          sandbox_mode: Boolean(instance.sandbox_mode),
+          outbound_per_minute: Number(instance.outbound_per_minute || 30),
+          opt_out_keywords: String(instance.opt_out_keywords_text || (
+            Array.isArray(instance.opt_out_keywords)
+              ? instance.opt_out_keywords.join(', ')
+              : 'stop, unsubscribe'
+          ))
+            .split(',')
+            .map((value) => value.trim().toLowerCase())
+            .filter(Boolean),
           event_settings: eventSettings,
           n8n_secret: n8nSecret || undefined,
           clear_n8n_secret: clearN8nSecret,
@@ -155,6 +178,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
       setInstance(json.data);
       setN8nSecret('');
       setClearN8nSecret(false);
+      setAiApiKey('');
+      setClearAiApiKey(false);
       setSaveResult({ ok: true, message: 'Settings saved successfully.' });
     } catch (err: any) {
       setSaveResult({ ok: false, message: err.message });
@@ -164,6 +189,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   }
 
   async function rotateApiKey() {
+    if (!window.confirm('Rotate this instance API key? The current key will stop working immediately.')) return;
+
     setRotatingKey(true);
     setSaveResult(null);
     try {
@@ -234,6 +261,37 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
             onChange={(checked) => setInstance({ ...instance, ai_enabled: checked })}
           />
 
+          <CheckboxRow
+            label="Automatically send AI responses"
+            checked={instance.ai_auto_reply ?? true}
+            onChange={(checked) => setInstance({ ...instance, ai_auto_reply: checked })}
+          />
+
+          <div className="two-column-form settings-inline-grid">
+            <div className="form-row">
+              <label htmlFor="ai-provider">Provider</label>
+              <select
+                id="ai-provider"
+                value={instance.ai_provider || 'webhook'}
+                onChange={(event) => setInstance({ ...instance, ai_provider: event.target.value })}
+              >
+                <option value="webhook">Custom webhook / n8n</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic Claude</option>
+                <option value="none">Disabled</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label htmlFor="ai-model">Model</label>
+              <input
+                id="ai-model"
+                value={instance.ai_model || ''}
+                onChange={(event) => setInstance({ ...instance, ai_model: event.target.value })}
+                placeholder={instance.ai_provider === 'anthropic' ? 'claude-sonnet-4-5' : 'gpt-4.1-mini'}
+              />
+            </div>
+          </div>
+
           <div className="form-row">
             <label>AI Automation Link</label>
             <input
@@ -284,6 +342,60 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
             />
           )}
 
+          {['openai', 'anthropic'].includes(instance.ai_provider) && (
+            <>
+              <div className="form-row">
+                <label htmlFor="ai-api-key">Provider API key</label>
+                <input
+                  id="ai-api-key"
+                  type="password"
+                  value={aiApiKey}
+                  onChange={(event) => {
+                    setAiApiKey(event.target.value);
+                    setClearAiApiKey(false);
+                  }}
+                  placeholder={instance.has_ai_api_key ? 'Stored securely. Enter a new key to replace it.' : 'API key'}
+                  autoComplete="new-password"
+                />
+              </div>
+              {instance.has_ai_api_key && (
+                <CheckboxRow
+                  label="Remove stored provider API key"
+                  checked={clearAiApiKey}
+                  onChange={(checked) => {
+                    setClearAiApiKey(checked);
+                    if (checked) setAiApiKey('');
+                  }}
+                />
+              )}
+            </>
+          )}
+
+          <div className="form-row">
+            <label htmlFor="ai-system-prompt">System prompt</label>
+            <textarea
+              id="ai-system-prompt"
+              rows={5}
+              value={instance.ai_system_prompt || ''}
+              onChange={(event) => setInstance({ ...instance, ai_system_prompt: event.target.value })}
+            />
+          </div>
+
+          <div className="form-row form-row-narrow">
+            <label htmlFor="ai-memory">Messages kept per contact</label>
+            <input
+              id="ai-memory"
+              type="number"
+              min="1"
+              max="100"
+              value={instance.ai_memory_messages || 20}
+              onChange={(event) => setInstance({
+                ...instance,
+                ai_memory_messages: Number(event.target.value),
+              })}
+            />
+          </div>
+
           <div id="webhook-test" className="webhook-test-box">
             <div>
               <strong>Test AI Automation Link</strong>
@@ -305,6 +417,77 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
               )}
             </div>
           )}
+        </div>
+
+        <div className="settings-grid">
+          <div className="card settings-card">
+            <h2>Media Intelligence</h2>
+            <CheckboxRow
+              label="Transcribe voice notes"
+              checked={Boolean(instance.media_transcription_enabled)}
+              onChange={(checked) => setInstance({ ...instance, media_transcription_enabled: checked })}
+            />
+            <CheckboxRow
+              label="Analyze images"
+              checked={Boolean(instance.media_vision_enabled)}
+              onChange={(checked) => setInstance({ ...instance, media_vision_enabled: checked })}
+            />
+            <CheckboxRow
+              label="Extract PDF and document text"
+              checked={Boolean(instance.document_extraction_enabled)}
+              onChange={(checked) => setInstance({ ...instance, document_extraction_enabled: checked })}
+            />
+            <div className="form-row settings-select-row">
+              <label htmlFor="storage-provider">Storage</label>
+              <select
+                id="storage-provider"
+                value={instance.storage_provider || 'local'}
+                onChange={(event) => setInstance({ ...instance, storage_provider: event.target.value })}
+              >
+                <option value="local">Local disk</option>
+                <option value="s3">Amazon S3</option>
+                <option value="minio">MinIO</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="card settings-card">
+            <h2>Delivery Safety</h2>
+            <CheckboxRow
+              label="Sandbox mode (simulate outbound sends)"
+              checked={Boolean(instance.sandbox_mode)}
+              onChange={(checked) => setInstance({ ...instance, sandbox_mode: checked })}
+            />
+            <div className="form-row settings-select-row">
+              <label htmlFor="outbound-rate">Messages per contact per minute</label>
+              <input
+                id="outbound-rate"
+                type="number"
+                min="1"
+                max="600"
+                value={instance.outbound_per_minute || 30}
+                onChange={(event) => setInstance({
+                  ...instance,
+                  outbound_per_minute: Number(event.target.value),
+                })}
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="opt-out-keywords">Opt-out keywords</label>
+              <input
+                id="opt-out-keywords"
+                value={instance.opt_out_keywords_text ?? (
+                  Array.isArray(instance.opt_out_keywords)
+                    ? instance.opt_out_keywords.join(', ')
+                    : 'stop, unsubscribe'
+                )}
+                onChange={(event) => setInstance({
+                  ...instance,
+                  opt_out_keywords_text: event.target.value,
+                })}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="settings-grid">
@@ -486,14 +669,21 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
         )}
       </form>
 
-      <div className="card" style={{ marginTop: '24px', backgroundColor: '#fef2f2', borderColor: '#fca5a5' }}>
-        <h3 style={{ marginTop: 0, color: '#991b1b' }}>Secret Information</h3>
-        <p style={{ fontSize: '0.9rem' }}>
-          <strong>Webhook Secret (Backend):</strong> <br />
-          <code style={{ background: 'white', padding: '4px 8px', borderRadius: '4px', display: 'block', marginTop: '8px', wordBreak: 'break-all' }}>
-            {instance.webhook_secret || 'Not set'}
-          </code>
-        </p>
+      <div className="surface-panel signing-secret-panel">
+        <div>
+          <h3>Webhook signing secret</h3>
+          <code>{instance.webhook_secret || 'Not set'}</code>
+        </div>
+        {instance.webhook_secret && (
+          <button
+            type="button"
+            className="icon-btn"
+            title="Copy signing secret"
+            onClick={() => navigator.clipboard.writeText(instance.webhook_secret)}
+          >
+            <Copy size={17} />
+          </button>
+        )}
       </div>
     </div>
   );

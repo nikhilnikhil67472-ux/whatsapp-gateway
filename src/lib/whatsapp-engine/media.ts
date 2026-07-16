@@ -1,8 +1,9 @@
 import { downloadMediaMessage, WAMessage } from '@whiskeysockets/baileys';
 import { NormalizedWhatsAppMessage } from './normalize';
-import fs from 'fs';
 import path from 'path';
 import { Transform } from 'stream';
+import { storeMedia } from '../media/storage';
+import { errorDetails, logger } from '../observability/logger';
 
 export type ProcessedMedia = {
   mediaId?: string;
@@ -15,6 +16,11 @@ export type ProcessedMedia = {
   sizeBytes?: number;
   transcription?: string;
   aiDescription?: string;
+  extractedText?: string;
+  storageProvider?: string;
+  storageKey?: string;
+  buffer?: Buffer;
+  intelligenceErrors?: string[];
 };
 
 function getExtension(mimeType?: string): string {
@@ -27,21 +33,11 @@ function getExtension(mimeType?: string): string {
   return mimeType.split('/')[1]?.split(';')[0] || 'bin';
 }
 
-function getPublicMediaUrl(storagePath: string) {
-  const relativeUrl = `/${storagePath.replace(/\\/g, '/')}`;
-  const baseUrl = process.env.APP_BASE_URL?.replace(/\/$/, '');
-
-  if (!baseUrl) {
-    return relativeUrl;
-  }
-
-  return `${baseUrl}${relativeUrl}`;
-}
-
 export async function processInboundMedia(
   message: NormalizedWhatsAppMessage,
   options: {
     includeBase64?: boolean;
+    storageProvider?: string | null;
     reuploadRequest?: (message: WAMessage) => Promise<WAMessage>;
   } = {},
 ): Promise<ProcessedMedia | null> {
@@ -66,7 +62,7 @@ export async function processInboundMedia(
       'stream',
       {},
       {
-        logger: console as any,
+        logger: logger as any,
         reuploadRequest: options.reuploadRequest || (async () => rawMsg),
       },
     ) as Transform;
@@ -89,23 +85,29 @@ export async function processInboundMedia(
     if (!buffer.length) return result;
 
     const safeMessageId = message.messageId.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `media/${message.instanceId}/${safeMessageId}/${fileName}`;
-    const publicRoot = path.resolve(process.cwd(), 'public');
-    const absolutePath = path.resolve(publicRoot, storagePath);
-    if (!absolutePath.startsWith(`${publicRoot}${path.sep}`)) {
-      throw new Error('Refusing to write media outside the public directory');
-    }
-    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    await fs.promises.writeFile(absolutePath, buffer);
+    const storage = await storeMedia({
+      buffer,
+      key: `${message.instanceId}/${safeMessageId}/${fileName}`,
+      mimeType: result.mimeType,
+      provider: options.storageProvider,
+    });
 
-    result.storagePath = storagePath;
-    result.publicUrl = getPublicMediaUrl(storagePath);
+    result.storageProvider = storage.storageProvider;
+    result.storagePath = storage.storagePath;
+    result.storageKey = storage.storageKey;
+    result.publicUrl = storage.publicUrl;
     result.sizeBytes = sizeBytes;
+    result.buffer = buffer;
     if (options.includeBase64) result.base64Data = buffer.toString('base64');
 
     return result;
   } catch (err) {
-    console.error('Media processing failed:', err);
+    logger.error({
+      instance_id: message.instanceId,
+      message_id: message.messageId,
+      media_type: message.type,
+      ...errorDetails(err),
+    }, 'Inbound media processing failed.');
     return result;
   }
 }

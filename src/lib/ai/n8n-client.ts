@@ -3,6 +3,7 @@ import { ProcessedMedia } from '../whatsapp-engine/media';
 import { db } from '../db/sqlite';
 import crypto from 'crypto';
 import { createWebhookHeaders } from '../webhooks/signature';
+import { errorDetails, logger } from '../observability/logger';
 
 export interface N8nProcessParams {
   instanceId: string;
@@ -38,7 +39,10 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
       timestamp: data.created_at || new Date().toISOString()
     })).reverse();
   } catch (err) {
-    console.error('Failed to fetch history for AI', err);
+    logger.warn({
+      instance_id: instanceId,
+      ...errorDetails(err),
+    }, 'Failed to load conversation history for the AI webhook.');
   }
 
   // 2. Prepare payload
@@ -82,11 +86,18 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
     },
     media: processedMedia ? {
       type: processedMedia.mediaType,
+      media_type: processedMedia.mediaType,
+      mimetype: processedMedia.mimeType,
       mime_type: processedMedia.mimeType,
       file_name: processedMedia.fileName,
       size_bytes: processedMedia.sizeBytes,
       url: processedMedia.publicUrl,
       base64_data: processedMedia.base64Data,
+      transcription: processedMedia.transcription,
+      vision_analysis: processedMedia.aiDescription,
+      analysis: processedMedia.aiDescription,
+      extracted_text: processedMedia.extractedText,
+      intelligence_errors: processedMedia.intelligenceErrors,
     } : null,
     history
   };
@@ -124,7 +135,11 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
       signal: controller.signal,
     });
 
-    console.log(`[n8n] Webhook responded with status: ${response.status}`);
+    logger.info({
+      instance_id: instanceId,
+      ai_run_id: runId,
+      response_status: response.status,
+    }, 'AI webhook responded.');
 
     const duration = Date.now() - start;
 
@@ -166,6 +181,11 @@ export async function processWithN8n(params: N8nProcessParams): Promise<any> {
       error_message: error.name === 'AbortError' ? 'AI webhook request timed out' : error.message,
       completed_at: new Date().toISOString()
     });
+    logger.error({
+      instance_id: instanceId,
+      ai_run_id: runId,
+      ...errorDetails(error),
+    }, 'AI webhook request failed.');
     return null;
   } finally {
     clearTimeout(timeout);

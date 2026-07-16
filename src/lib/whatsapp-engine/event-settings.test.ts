@@ -25,11 +25,22 @@ test('public instances never expose encrypted bearer secrets or API hashes', () 
     n8n_secret_encrypted: 'encrypted',
     api_key_hash: 'hash',
     api_key_prefix: 'wag_123',
+    webhook_secret: 'signing-secret',
   });
 
   assert.equal(instance ? 'n8n_secret_encrypted' in instance : true, false);
   assert.equal(instance ? 'api_key_hash' in instance : true, false);
+  assert.equal(instance ? 'webhook_secret' in instance : true, false);
   assert.equal(instance?.has_n8n_secret, true);
+
+  const developerInstance = toPublicInstance({
+    id: 'one',
+    webhook_secret: 'signing-secret',
+  }, { includeWebhookSecret: true });
+  assert.equal(
+    (developerInstance as Record<string, any>)?.webhook_secret,
+    'signing-secret',
+  );
 });
 
 test('LID senders are resolved to a phone-number JID when Baileys has a mapping', async () => {

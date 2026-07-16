@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db/sqlite';
 import { authorizeGatewayRequest } from '@/lib/security/api-key';
+import { enqueueOutboundMessage } from '@/lib/queue/enqueue';
+import { checkRateLimit } from '@/lib/security/rate-limit';
+import { errorDetails, logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,9 +83,24 @@ export async function POST(req: NextRequest) {
     if (!authorization.ok) {
       return NextResponse.json({ error: authorization.error }, { status: authorization.status });
     }
+    const rateLimit = await checkRateLimit({
+      key: authorization.rateLimitKey || `instance:${resolvedInstanceId}`,
+      limit: Number(process.env.API_RATE_LIMIT_PER_MINUTE || 120),
+    });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfterSeconds: rateLimit.retryAfterSeconds },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateLimit.retryAfterSeconds) },
+        },
+      );
+    }
 
-    const outboundId = db.enqueueOutboundMessage({
+    const outboundId = await enqueueOutboundMessage({
       instance_id: resolvedInstanceId,
+      organization_id: instance.organization_id,
+      api_key_id: authorization.apiKeyId || null,
       conversation_id: `${resolvedInstanceId}_${remoteJid}`,
       remote_jid: remoteJid,
       reply_type: type,
@@ -102,20 +120,45 @@ export async function POST(req: NextRequest) {
         vcard: vcard || null,
       },
     });
-
-    return NextResponse.json({
-      success: true,
-      queued: true,
-      data: {
-        id: outboundId,
-        instanceId: resolvedInstanceId,
-        remoteJid,
-        type,
-        status: 'pending',
-      },
+    db.addAuditLog({
+      organization_id: instance.organization_id,
+      user_id: authorization.userId || null,
+      instance_id: resolvedInstanceId,
+      action: 'message.queued',
+      target_type: 'outbound_message',
+      target_id: outboundId,
+      ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
+      user_agent: req.headers.get('user-agent'),
+      metadata: { type, remote_jid: remoteJid, auth_source: authorization.source },
     });
+    db.addUsageEvent({
+      organization_id: instance.organization_id,
+      user_id: authorization.userId || null,
+      instance_id: resolvedInstanceId,
+      api_key_id: authorization.apiKeyId || null,
+      event_type: 'api.request',
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        queued: true,
+        data: {
+          id: outboundId,
+          instanceId: resolvedInstanceId,
+          remoteJid,
+          type,
+          status: 'pending',
+          rateLimit: {
+            limit: rateLimit.limit,
+            remaining: rateLimit.remaining,
+          },
+        },
+      },
+      { status: 202 },
+    );
   } catch (error: any) {
-    console.error('Send error:', error);
+    logger.error(errorDetails(error), 'Outbound message request failed.');
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

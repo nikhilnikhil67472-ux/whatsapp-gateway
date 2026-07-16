@@ -1,4 +1,5 @@
 import { NormalizedWhatsAppMessage } from './normalize';
+import { errorDetails, logger } from '../observability/logger';
 
 function jidToPhone(jid?: string | null) {
   if (!jid) return null;
@@ -60,7 +61,11 @@ export async function enrichSenderIdentity(sock: any, message: NormalizedWhatsAp
         return message;
       }
     } catch (err) {
-      console.warn('[identity] Failed to resolve LID to phone number:', err);
+      logger.warn({
+        instance_id: message.instanceId,
+        lid_jid: lidJid,
+        ...errorDetails(err),
+      }, 'Failed to resolve WhatsApp LID to a phone-number JID.');
     }
   }
 

@@ -2,12 +2,14 @@ import Link from 'next/link';
 import { Home, Settings, MessageSquare, QrCode, Activity } from 'lucide-react';
 import CreateInstanceForm from './CreateInstanceForm';
 import { db } from '@/lib/db/sqlite';
+import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function InstancesPage() {
-  const instances = db.listInstances();
+  const session = await getServerDashboardSession();
+  const instances = db.listInstances(session.organizationId);
   const connectedCount = instances.filter((instance: any) => instance.status === 'connected').length;
   const aiEnabledCount = instances.filter((instance: any) => instance.ai_enabled !== false).length;
   const waitingQrCount = instances.filter((instance: any) => instance.status === 'waiting_qr').length;

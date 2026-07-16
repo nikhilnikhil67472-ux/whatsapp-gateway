@@ -1,6 +1,14 @@
 import crypto from 'crypto';
 
 export const DASHBOARD_COOKIE = 'wag_dashboard_session';
+export type DashboardRole = 'admin' | 'developer' | 'viewer';
+export type DashboardSession = {
+  expiresAt: number;
+  userId: string;
+  organizationId: string;
+  role: DashboardRole;
+  email?: string | null;
+};
 
 function authSecret() {
   return process.env.AUTH_SECRET || process.env.ENCRYPTION_KEY || '';
@@ -25,31 +33,57 @@ export function shouldUseSecureDashboardCookie({
   return protocol.replace(/:$/, '').toLowerCase() === 'https';
 }
 
-export function createDashboardSession() {
+export function createDashboardSession(
+  claims: Omit<DashboardSession, 'expiresAt'> = {
+    userId: 'user_admin',
+    organizationId: 'org_default',
+    role: 'admin',
+    email: process.env.ADMIN_EMAIL || 'admin@localhost',
+  },
+) {
   const payload = Buffer.from(JSON.stringify({
     expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1_000,
+    ...claims,
   })).toString('base64url');
   return `${payload}.${sign(payload)}`;
 }
 
-export function verifyDashboardSession(token?: string | null) {
-  if (!token || !dashboardAuthConfigured()) return false;
+export function readDashboardSession(token?: string | null): DashboardSession | null {
+  if (!token || !dashboardAuthConfigured()) return null;
   const [payload, signature] = token.split('.');
-  if (!payload || !signature) return false;
+  if (!payload || !signature) return null;
 
   const expected = sign(payload);
   const left = Buffer.from(signature);
   const right = Buffer.from(expected);
-  if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return false;
+  if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return null;
 
   try {
-    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-      expiresAt?: number;
+    const decoded = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as Partial<DashboardSession>;
+    if (typeof decoded.expiresAt !== 'number' || decoded.expiresAt <= Date.now()) {
+      return null;
+    }
+
+    // Sessions issued before team accounts existed only contained expiresAt.
+    // Preserve them as the original bootstrap administrator until they expire.
+    return {
+      expiresAt: decoded.expiresAt,
+      userId: decoded.userId || 'user_admin',
+      organizationId: decoded.organizationId || 'org_default',
+      role: ['admin', 'developer', 'viewer'].includes(decoded.role || '')
+        ? decoded.role as DashboardRole
+        : 'admin',
+      email: decoded.email || process.env.ADMIN_EMAIL || 'admin@localhost',
     };
-    return typeof decoded.expiresAt === 'number' && decoded.expiresAt > Date.now();
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function verifyDashboardSession(token?: string | null) {
+  return Boolean(readDashboardSession(token));
 }
 
 export function verifyDashboardPassword(password: string) {

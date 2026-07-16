@@ -1,10 +1,13 @@
 import { db } from '@/lib/db/sqlite';
+import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export default async function LogsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const session = await getServerDashboardSession();
+  if (!db.getInstance(id, session.organizationId)) return <div>Instance not found</div>;
 
   const logs = db.listEventLogs(id, 50);
   const aiRuns = db.listAiRuns(id, 25);

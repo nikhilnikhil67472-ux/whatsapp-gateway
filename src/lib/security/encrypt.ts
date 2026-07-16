@@ -40,3 +40,24 @@ export function decrypt(encryptedData: string): string {
   
   return decrypted;
 }
+
+const storedValuePrefix = 'wag-encrypted:v1:';
+
+export function encryptStoredValue(value: string) {
+  if (value.startsWith(storedValuePrefix)) return value;
+  return `${storedValuePrefix}${encrypt(value)}`;
+}
+
+export function decryptStoredValue(value: string) {
+  if (!value.startsWith(storedValuePrefix)) {
+    return { value, migrated: false };
+  }
+  return {
+    value: decrypt(value.slice(storedValuePrefix.length)),
+    migrated: true,
+  };
+}
+
+export function isEncryptedStoredValue(value: string) {
+  return value.startsWith(storedValuePrefix);
+}

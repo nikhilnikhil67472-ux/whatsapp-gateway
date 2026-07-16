@@ -6,8 +6,20 @@ import {
   generateApiKey,
   hashApiKey,
 } from './api-key';
-import { shouldUseSecureDashboardCookie } from './dashboard-auth';
-import { createWebhookHeaders } from '../webhooks/signature';
+import {
+  readDashboardSession,
+  shouldUseSecureDashboardCookie,
+} from './dashboard-auth';
+import {
+  decryptStoredValue,
+  encryptStoredValue,
+  isEncryptedStoredValue,
+} from './encrypt';
+import {
+  createWebhookHeaders,
+  verifyWebhookSignature,
+} from '../webhooks/signature';
+import { hashPassword, verifyPassword } from './password';
 
 test('instance API keys authenticate without storing the raw value', () => {
   const key = generateApiKey();
@@ -38,6 +50,18 @@ test('webhook signature covers timestamp and exact body', () => {
 
   assert.equal(headers['X-Webhook-Signature'], `sha256=${expected}`);
   assert.equal(headers['X-Webhook-Delivery'], 'delivery-1');
+  assert.equal(verifyWebhookSignature({
+    payload,
+    timestamp,
+    signature: headers['X-Webhook-Signature'],
+    secret,
+  }), true);
+  assert.equal(verifyWebhookSignature({
+    payload: `${payload} `,
+    timestamp,
+    signature: headers['X-Webhook-Signature'],
+    secret,
+  }), false);
 });
 
 test('dashboard cookies follow the public request protocol behind a proxy', () => {
@@ -53,4 +77,51 @@ test('dashboard cookies follow the public request protocol behind a proxy', () =
     forwardedProtocol: 'https, http',
     requestProtocol: 'http:',
   }), true);
+});
+
+test('database secrets are encrypted and legacy plaintext remains migratable', () => {
+  const previousKey = process.env.ENCRYPTION_KEY;
+  process.env.ENCRYPTION_KEY = '12345678901234567890123456789012';
+  try {
+    const encrypted = encryptStoredValue('session-json');
+    assert.equal(isEncryptedStoredValue(encrypted), true);
+    assert.equal(decryptStoredValue(encrypted).value, 'session-json');
+    assert.deepEqual(decryptStoredValue('legacy-json'), {
+      value: 'legacy-json',
+      migrated: false,
+    });
+  } finally {
+    process.env.ENCRYPTION_KEY = previousKey;
+  }
+});
+
+test('legacy dashboard sessions retain bootstrap administrator access until expiry', () => {
+  const previousPassword = process.env.DASHBOARD_PASSWORD;
+  const previousSecret = process.env.AUTH_SECRET;
+  process.env.DASHBOARD_PASSWORD = 'test-password';
+  process.env.AUTH_SECRET = '12345678901234567890123456789012';
+  try {
+    const payload = Buffer.from(JSON.stringify({
+      expiresAt: Date.now() + 60_000,
+    })).toString('base64url');
+    const signature = crypto
+      .createHmac('sha256', process.env.AUTH_SECRET)
+      .update(payload)
+      .digest('base64url');
+    const session = readDashboardSession(`${payload}.${signature}`);
+    assert.equal(session?.userId, 'user_admin');
+    assert.equal(session?.organizationId, 'org_default');
+    assert.equal(session?.role, 'admin');
+  } finally {
+    process.env.DASHBOARD_PASSWORD = previousPassword;
+    process.env.AUTH_SECRET = previousSecret;
+  }
+});
+
+test('team passwords use salted scrypt hashes', () => {
+  const first = hashPassword('correct horse battery staple');
+  const second = hashPassword('correct horse battery staple');
+  assert.notEqual(first, second);
+  assert.equal(verifyPassword('correct horse battery staple', first), true);
+  assert.equal(verifyPassword('wrong password', first), false);
 });

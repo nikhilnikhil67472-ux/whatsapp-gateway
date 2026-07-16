@@ -8,6 +8,12 @@ import {
   SignalDataTypeMap,
 } from '@whiskeysockets/baileys';
 import { db } from '../db/sqlite';
+import {
+  decryptStoredValue,
+  encryptStoredValue,
+  isEncryptedStoredValue,
+} from '../security/encrypt';
+import { logger } from '../observability/logger';
 
 export const getLegacySessionRoot = () =>
   process.env.WHATSAPP_SESSION_ROOT
@@ -39,8 +45,18 @@ export async function createSqliteAuthState(
   if (!serializedCreds) {
     serializedCreds = await readLegacyValue(instanceId, 'creds.json');
     if (serializedCreds) {
-      db.saveAuthCreds(instanceId, serializedCreds);
-      console.log(`[Baileys ${instanceId}] Migrated legacy credentials into SQLite.`);
+      db.saveAuthCreds(instanceId, encryptStoredValue(serializedCreds));
+      logger.info({ instance_id: instanceId }, 'Migrated legacy Baileys credentials into SQLite.');
+    }
+  }
+
+  if (serializedCreds) {
+    const encrypted = isEncryptedStoredValue(serializedCreds);
+    const decrypted = decryptStoredValue(serializedCreds);
+    serializedCreds = decrypted.value;
+    if (!encrypted) {
+      db.saveAuthCreds(instanceId, encryptStoredValue(serializedCreds));
+      logger.info({ instance_id: instanceId }, 'Encrypted existing Baileys credentials at rest.');
     }
   }
 
@@ -62,11 +78,17 @@ export async function createSqliteAuthState(
             if (!serialized) {
               serialized = await readLegacyValue(instanceId, `${type}-${keyId}.json`);
               if (serialized) {
-                db.saveAuthKey(instanceId, type, keyId, serialized);
+                db.saveAuthKey(instanceId, type, keyId, encryptStoredValue(serialized));
               }
             }
 
             if (!serialized) continue;
+            const encrypted = isEncryptedStoredValue(serialized);
+            const decrypted = decryptStoredValue(serialized);
+            serialized = decrypted.value;
+            if (!encrypted) {
+              db.saveAuthKey(instanceId, type, keyId, encryptStoredValue(serialized));
+            }
             let value = deserialize<SignalDataTypeMap[T]>(serialized);
             if (type === 'app-state-sync-key' && value) {
               value = proto.Message.AppStateSyncKeyData.fromObject(
@@ -92,14 +114,14 @@ export async function createSqliteAuthState(
             transaction.map((item) => ({
               keyType: item.type,
               keyId: item.keyId,
-              data: item.value ? serialize(item.value) : null,
+              data: item.value ? encryptStoredValue(serialize(item.value)) : null,
             })),
           );
         },
       },
     },
     saveCreds: async () => {
-      db.saveAuthCreds(instanceId, serialize(creds));
+      db.saveAuthCreds(instanceId, encryptStoredValue(serialize(creds)));
     },
   };
 }

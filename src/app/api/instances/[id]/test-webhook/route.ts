@@ -1,13 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/sqlite';
 import crypto from 'crypto';
 import { decrypt } from '@/lib/security/encrypt';
 import { createWebhookHeaders } from '@/lib/webhooks/signature';
+import { requireDashboardRole } from '@/lib/security/dashboard-session';
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = requireDashboardRole(req, 'developer');
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
-    const instance = db.getInstance(id);
+    const instance = db.getInstance(id, auth.session.organizationId);
     if (!instance) return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
     if (!instance.n8n_webhook_url) {
       return NextResponse.json({ error: 'Add your AI Automation Link before testing.' }, { status: 400 });
@@ -70,6 +73,16 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     } catch {
       // Keep raw text.
     }
+
+    db.addAuditLog({
+      organization_id: auth.session.organizationId,
+      user_id: auth.session.userId,
+      instance_id: id,
+      action: 'webhook.tested',
+      target_type: 'instance',
+      target_id: id,
+      metadata: { status: response.status, duration_ms: Date.now() - start },
+    });
 
     return NextResponse.json({
       success: response.ok,

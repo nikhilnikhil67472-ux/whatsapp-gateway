@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "whatsapp-ai-gateway"
+version = "0.1.0"
+description = "Python SDK for the self-hosted WhatsApp AI Gateway."
+requires-python = ">=3.10"
+dependencies = ["httpx>=0.27"]

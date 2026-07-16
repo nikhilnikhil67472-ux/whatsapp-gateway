@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { DEFAULT_EVENT_SETTINGS } from '@/lib/whatsapp-engine/event-settings';
 import { db } from '@/lib/db/sqlite';
 import { generateApiKey, hashApiKey } from '@/lib/security/api-key';
+import { requireDashboardRole } from '@/lib/security/dashboard-session';
+import { enqueueWorkerCommand } from '@/lib/queue/enqueue';
+import { errorDetails, logger } from '@/lib/observability/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +17,8 @@ const createSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const auth = requireDashboardRole(req, 'developer');
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
@@ -23,13 +28,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { clientId, instanceName, rejectCall, groupsIgnore } = parsed.data;
-    if (db.getInstanceByIdentifier(instanceName)) {
+    if (db.getInstanceByIdentifier(instanceName, auth.session.organizationId)) {
       return NextResponse.json({ error: 'An instance with this name already exists' }, { status: 409 });
     }
 
     const apiKey = generateApiKey();
 
     const instanceId = db.createInstance({
+      organization_id: auth.session.organizationId,
       client_id: clientId || null,
       instance_name: instanceName,
       provider: 'local_baileys',
@@ -53,8 +59,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // The background worker owns Baileys sockets in production. It polls SQLite
-    // and starts newly created instances without creating a duplicate web-process socket.
+    await enqueueWorkerCommand(instanceId, 'start');
+    db.addAuditLog({
+      organization_id: auth.session.organizationId,
+      user_id: auth.session.userId,
+      instance_id: instanceId,
+      action: 'instance.created',
+      target_type: 'instance',
+      target_id: instanceId,
+      metadata: { instance_name: instanceName },
+    });
 
     return NextResponse.json({
       success: true,
@@ -68,7 +82,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('Create instance error:', error);
+    logger.error(errorDetails(error), 'Instance creation failed.');
     return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }
