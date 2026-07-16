@@ -6,6 +6,7 @@ import {
   generateApiKey,
   hashApiKey,
 } from './api-key';
+import { shouldUseSecureDashboardCookie } from './dashboard-auth';
 import { createWebhookHeaders } from '../webhooks/signature';
 
 test('instance API keys authenticate without storing the raw value', () => {
@@ -37,4 +38,19 @@ test('webhook signature covers timestamp and exact body', () => {
 
   assert.equal(headers['X-Webhook-Signature'], `sha256=${expected}`);
   assert.equal(headers['X-Webhook-Delivery'], 'delivery-1');
+});
+
+test('dashboard cookies follow the public request protocol behind a proxy', () => {
+  assert.equal(shouldUseSecureDashboardCookie({
+    forwardedProtocol: 'http',
+    requestProtocol: 'http:',
+  }), false);
+  assert.equal(shouldUseSecureDashboardCookie({
+    forwardedProtocol: 'https',
+    requestProtocol: 'http:',
+  }), true);
+  assert.equal(shouldUseSecureDashboardCookie({
+    forwardedProtocol: 'https, http',
+    requestProtocol: 'http:',
+  }), true);
 });

@@ -14,6 +14,17 @@ export function dashboardAuthConfigured() {
   return Boolean(process.env.DASHBOARD_PASSWORD && authSecret().length >= 32);
 }
 
+export function shouldUseSecureDashboardCookie({
+  forwardedProtocol,
+  requestProtocol,
+}: {
+  forwardedProtocol?: string | null;
+  requestProtocol?: string | null;
+}) {
+  const protocol = forwardedProtocol?.split(',')[0]?.trim() || requestProtocol || '';
+  return protocol.replace(/:$/, '').toLowerCase() === 'https';
+}
+
 export function createDashboardSession() {
   const payload = Buffer.from(JSON.stringify({
     expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1_000,

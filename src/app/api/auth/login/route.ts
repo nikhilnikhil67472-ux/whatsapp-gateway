@@ -3,6 +3,7 @@ import {
   DASHBOARD_COOKIE,
   createDashboardSession,
   dashboardAuthConfigured,
+  shouldUseSecureDashboardCookie,
   verifyDashboardPassword,
 } from '@/lib/security/dashboard-auth';
 
@@ -23,7 +24,10 @@ export async function POST(request: NextRequest) {
   response.cookies.set(DASHBOARD_COOKIE, createDashboardSession(), {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureDashboardCookie({
+      forwardedProtocol: request.headers.get('x-forwarded-proto'),
+      requestProtocol: request.nextUrl.protocol,
+    }),
     path: '/',
     maxAge: 7 * 24 * 60 * 60,
   });
