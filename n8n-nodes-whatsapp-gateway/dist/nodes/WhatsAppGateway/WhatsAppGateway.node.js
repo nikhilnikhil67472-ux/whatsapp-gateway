@@ -11,7 +11,7 @@ class WhatsAppGateway {
             group: ['output'],
             version: 1,
             subtitle: '={{$parameter["operation"]}}',
-            description: 'Send WhatsApp messages through your self-hosted WhatsApp AI Gateway',
+            description: 'Send messages and inspect instances through your self-hosted WhatsApp AI Gateway',
             defaults: {
                 name: 'WhatsApp Gateway',
             },
@@ -35,17 +35,23 @@ class WhatsAppGateway {
                             description: 'Queue a WhatsApp message for sending',
                             action: 'Send a WhatsApp message',
                         },
+                        {
+                            name: 'Get Instance Status',
+                            value: 'getInstanceStatus',
+                            description: 'Check whether an instance is connected',
+                            action: 'Get instance status',
+                        },
                     ],
                     default: 'sendMessage',
                     noDataExpression: true,
                 },
                 {
-                    displayName: 'Instance ID',
+                    displayName: 'Instance ID or Name',
                     name: 'instanceId',
                     type: 'string',
                     default: '',
                     required: true,
-                    description: 'Gateway instance ID from the dashboard URL',
+                    description: 'Instance UUID from the dashboard URL, or its exact instance name',
                 },
                 {
                     displayName: 'Recipient Type',
@@ -62,6 +68,7 @@ class WhatsAppGateway {
                         },
                     ],
                     default: 'phoneNumber',
+                    displayOptions: { show: { operation: ['sendMessage'] } },
                 },
                 {
                     displayName: 'Phone Number',
@@ -72,6 +79,7 @@ class WhatsAppGateway {
                     description: 'Country code ke saath number, plus sign optional',
                     displayOptions: {
                         show: {
+                            operation: ['sendMessage'],
                             recipientType: ['phoneNumber'],
                         },
                     },
@@ -85,6 +93,7 @@ class WhatsAppGateway {
                     placeholder: '919876543210@s.whatsapp.net',
                     displayOptions: {
                         show: {
+                            operation: ['sendMessage'],
                             recipientType: ['remoteJid'],
                         },
                     },
@@ -117,6 +126,7 @@ class WhatsAppGateway {
                         },
                     ],
                     default: 'text',
+                    displayOptions: { show: { operation: ['sendMessage'] } },
                 },
                 {
                     displayName: 'Message Text',
@@ -127,6 +137,7 @@ class WhatsAppGateway {
                     },
                     default: '',
                     description: 'Text message or media caption',
+                    displayOptions: { show: { operation: ['sendMessage'] } },
                 },
                 {
                     displayName: 'Media Source',
@@ -135,6 +146,7 @@ class WhatsAppGateway {
                     options: [
                         { name: 'URL', value: 'url' },
                         { name: 'Base64', value: 'base64' },
+                        { name: 'n8n Binary Property', value: 'binary' },
                     ],
                     default: 'url',
                     displayOptions: {
@@ -168,6 +180,20 @@ class WhatsAppGateway {
                             mediaSource: ['base64'],
                         },
                     },
+                },
+                {
+                    displayName: 'Input Binary Field',
+                    name: 'binaryPropertyName',
+                    type: 'string',
+                    default: 'data',
+                    description: 'Name of the incoming n8n binary property',
+                    displayOptions: {
+                        show: {
+                            type: ['media', 'audio'],
+                            mediaSource: ['binary'],
+                        },
+                    },
+                    required: true,
                 },
                 {
                     displayName: 'Media Type',
@@ -243,91 +269,165 @@ class WhatsAppGateway {
                     displayName: 'MIME Type',
                     name: 'mimeType',
                     type: 'string',
-                    default: 'image/jpeg',
+                    default: '',
                     placeholder: 'image/jpeg',
+                    description: 'Leave empty to infer it from binary metadata or the selected message type',
                     displayOptions: {
                         show: {
-                            type: ['media'],
+                            type: ['media', 'audio'],
                         },
                     },
+                },
+                {
+                    displayName: 'File Name',
+                    name: 'fileName',
+                    type: 'string',
+                    default: '',
+                    placeholder: 'invoice.pdf',
+                    description: 'Optional file name; binary metadata is used when available',
+                    displayOptions: { show: { type: ['media'] } },
+                },
+                {
+                    displayName: 'Quoted Message ID',
+                    name: 'quotedMessageId',
+                    type: 'string',
+                    default: '',
+                    description: 'Optional WhatsApp message ID to reply to',
+                    displayOptions: { show: { operation: ['sendMessage'] } },
                 },
             ],
         };
     }
     async execute() {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const items = this.getInputData();
         const credentials = await this.getCredentials('whatsAppGatewayApi');
+        const baseUrl = credentials.baseUrl.replace(/\/+$/, '');
         const returnData = [];
         for (let i = 0; i < items.length; i++) {
-            const instanceId = this.getNodeParameter('instanceId', i);
-            const recipientType = this.getNodeParameter('recipientType', i);
-            const type = this.getNodeParameter('type', i);
-            const text = this.getNodeParameter('text', i, '');
-            const mediaUrl = this.getNodeParameter('mediaUrl', i, '');
-            const mediaSource = this.getNodeParameter('mediaSource', i, 'url');
-            const base64 = this.getNodeParameter('base64', i, '');
-            const mediaType = this.getNodeParameter('mediaType', i, '');
-            const mimeType = this.getNodeParameter('mimeType', i, '');
-            const body = {
-                instanceId,
-                type,
-                text,
-            };
-            if (recipientType === 'phoneNumber') {
-                body.phoneNumber = this.getNodeParameter('phoneNumber', i);
-            }
-            else {
-                body.remoteJid = this.getNodeParameter('remoteJid', i);
-            }
-            if (type === 'media' || type === 'audio') {
-                if (mediaSource === 'base64')
-                    body.base64 = base64;
-                else
-                    body.mediaUrl = mediaUrl;
-            }
-            if (type === 'media') {
-                body.mediaType = mediaType;
-                body.mimeType = mimeType;
-            }
-            if (type === 'location') {
-                body.latitude = this.getNodeParameter('latitude', i);
-                body.longitude = this.getNodeParameter('longitude', i);
-                body.locationName = this.getNodeParameter('locationName', i, '');
-                body.address = this.getNodeParameter('address', i, '');
-            }
-            if (type === 'contact') {
-                body.contactName = this.getNodeParameter('contactName', i);
-                body.vcard = this.getNodeParameter('vcard', i);
-            }
-            const options = {
-                method: 'POST',
-                url: `${credentials.baseUrl.replace(/\/$/, '')}/api/whatsapp/send`,
-                headers: {
+            try {
+                const operation = this.getNodeParameter('operation', i);
+                const instanceId = this.getNodeParameter('instanceId', i);
+                const headers = {
                     Accept: 'application/json',
                     Authorization: `Bearer ${credentials.apiKey}`,
-                },
-                body,
-                json: true,
-            };
-            let responseData;
-            try {
-                responseData = await this.helpers.httpRequest(options);
+                };
+                let options;
+                if (operation === 'getInstanceStatus') {
+                    options = {
+                        method: 'GET',
+                        url: `${baseUrl}/api/whatsapp/status`,
+                        headers,
+                        qs: { instanceId },
+                        json: true,
+                    };
+                }
+                else {
+                    const recipientType = this.getNodeParameter('recipientType', i);
+                    const type = this.getNodeParameter('type', i);
+                    const body = { instanceId, type };
+                    if (recipientType === 'phoneNumber') {
+                        body.phoneNumber = this.getNodeParameter('phoneNumber', i);
+                    }
+                    else {
+                        body.remoteJid = this.getNodeParameter('remoteJid', i);
+                    }
+                    if (type === 'text' || type === 'media') {
+                        const text = this.getNodeParameter('text', i, '');
+                        if (text)
+                            body.text = text;
+                    }
+                    if (type === 'media' || type === 'audio') {
+                        const mediaSource = this.getNodeParameter('mediaSource', i, 'url');
+                        let binaryMimeType = '';
+                        let binaryFileName = '';
+                        if (mediaSource === 'url') {
+                            body.mediaUrl = this.getNodeParameter('mediaUrl', i);
+                        }
+                        else if (mediaSource === 'base64') {
+                            body.base64 = this.getNodeParameter('base64', i);
+                        }
+                        else {
+                            const propertyName = this.getNodeParameter('binaryPropertyName', i, 'data');
+                            const binary = (_a = items[i].binary) === null || _a === void 0 ? void 0 : _a[propertyName];
+                            if (!binary) {
+                                throw new Error(`Input item does not contain binary property "${propertyName}"`);
+                            }
+                            const buffer = await this.helpers.getBinaryDataBuffer(i, propertyName);
+                            body.base64 = buffer.toString('base64');
+                            binaryMimeType = binary.mimeType || '';
+                            binaryFileName = binary.fileName || '';
+                        }
+                        const configuredMimeType = this.getNodeParameter('mimeType', i, '');
+                        const mediaType = type === 'media'
+                            ? this.getNodeParameter('mediaType', i)
+                            : '';
+                        const defaultMimeType = type === 'audio'
+                            ? 'audio/ogg; codecs=opus'
+                            : mediaType === 'video'
+                                ? 'video/mp4'
+                                : mediaType === 'document'
+                                    ? 'application/octet-stream'
+                                    : 'image/jpeg';
+                        body.mimeType = configuredMimeType || binaryMimeType || defaultMimeType;
+                        if (type === 'media') {
+                            body.mediaType = mediaType;
+                            const configuredFileName = this.getNodeParameter('fileName', i, '');
+                            if (configuredFileName || binaryFileName) {
+                                body.fileName = configuredFileName || binaryFileName;
+                            }
+                        }
+                    }
+                    if (type === 'location') {
+                        body.latitude = this.getNodeParameter('latitude', i);
+                        body.longitude = this.getNodeParameter('longitude', i);
+                        body.locationName = this.getNodeParameter('locationName', i, '');
+                        body.address = this.getNodeParameter('address', i, '');
+                    }
+                    if (type === 'contact') {
+                        body.contactName = this.getNodeParameter('contactName', i);
+                        body.vcard = this.getNodeParameter('vcard', i);
+                    }
+                    const quotedMessageId = this.getNodeParameter('quotedMessageId', i, '');
+                    if (quotedMessageId)
+                        body.quotedMessageId = quotedMessageId;
+                    options = {
+                        method: 'POST',
+                        url: `${baseUrl}/api/whatsapp/send`,
+                        headers,
+                        body,
+                        json: true,
+                    };
+                }
+                const responseData = await this.helpers.httpRequest(options);
+                returnData.push({
+                    json: responseData,
+                    pairedItem: { item: i },
+                });
             }
             catch (error) {
-                const responseBody = ((_a = error === null || error === void 0 ? void 0 : error.response) === null || _a === void 0 ? void 0 : _a.data) || ((_c = (_b = error === null || error === void 0 ? void 0 : error.cause) === null || _b === void 0 ? void 0 : _b.response) === null || _c === void 0 ? void 0 : _c.data);
-                const statusCode = ((_d = error === null || error === void 0 ? void 0 : error.response) === null || _d === void 0 ? void 0 : _d.status) || ((_f = (_e = error === null || error === void 0 ? void 0 : error.cause) === null || _e === void 0 ? void 0 : _e.response) === null || _f === void 0 ? void 0 : _f.status);
+                const responseBody = ((_b = error === null || error === void 0 ? void 0 : error.response) === null || _b === void 0 ? void 0 : _b.data) || ((_d = (_c = error === null || error === void 0 ? void 0 : error.cause) === null || _c === void 0 ? void 0 : _c.response) === null || _d === void 0 ? void 0 : _d.data);
+                const statusCode = ((_e = error === null || error === void 0 ? void 0 : error.response) === null || _e === void 0 ? void 0 : _e.status) || ((_g = (_f = error === null || error === void 0 ? void 0 : error.cause) === null || _f === void 0 ? void 0 : _f.response) === null || _g === void 0 ? void 0 : _g.status);
+                const message = (responseBody === null || responseBody === void 0 ? void 0 : responseBody.error) || error.message || 'WhatsApp Gateway request failed';
+                if (this.continueOnFail()) {
+                    returnData.push({
+                        json: {
+                            success: false,
+                            error: message,
+                            statusCode: statusCode || null,
+                            details: responseBody || null,
+                        },
+                        pairedItem: { item: i },
+                    });
+                    continue;
+                }
                 throw new n8n_workflow_1.NodeApiError(this.getNode(), error, {
-                    message: (responseBody === null || responseBody === void 0 ? void 0 : responseBody.error) || error.message || 'WhatsApp Gateway request failed',
+                    message,
                     description: responseBody
                         ? JSON.stringify(responseBody)
                         : `Gateway returned HTTP ${statusCode || 'error'}`,
                 });
             }
-            returnData.push({
-                json: responseData,
-                pairedItem: { item: i },
-            });
         }
         return [returnData];
     }

@@ -5,7 +5,7 @@ import {
 
 export class WhatsAppGatewayApi implements ICredentialType {
   name = 'whatsAppGatewayApi';
-  displayName = 'WhatsApp Gateway API';
+  displayName = 'WhatsApp Gateway Instance API';
   documentationUrl = 'https://github.com/nikhilnikhil67472-ux/whatsapp-gateway';
 
   properties: INodeProperties[] = [
@@ -19,12 +19,13 @@ export class WhatsAppGatewayApi implements ICredentialType {
       required: true,
     },
     {
-      displayName: 'API Key',
+      displayName: 'Instance API Key',
       name: 'apiKey',
       type: 'string',
       typeOptions: { password: true },
       default: '',
-      description: 'Global gateway key or the instance API key shown when the instance was created',
+      placeholder: 'wag_...',
+      description: 'Instance API key shown once when the instance is created or rotated. The global administrator key is also supported.',
       required: true,
     },
   ];

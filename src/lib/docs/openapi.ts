@@ -105,6 +105,31 @@ export const openApiDocument = {
         },
       },
     },
+    '/api/whatsapp/status': {
+      get: {
+        tags: ['Instances'],
+        summary: 'Read an authenticated instance status',
+        description: 'Accepts global, instance, or user API keys with instances:read scope.',
+        security: [{ bearerAuth: [] }, { apiKeyAuth: [] }],
+        parameters: [
+          {
+            name: 'instanceId',
+            in: 'query',
+            required: true,
+            description: 'Instance UUID or exact instance name.',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          200: { description: 'Instance ID, name, status, and connected flag.' },
+          400: { description: 'Missing or invalid instance identifier.' },
+          401: { description: 'API key is missing.' },
+          403: { description: 'API key is invalid or lacks access.' },
+          404: { description: 'Instance not found.' },
+          429: { description: 'Rate limit exceeded.' },
+        },
+      },
+    },
     '/api/instances/create': {
       post: {
         tags: ['Instances'],
