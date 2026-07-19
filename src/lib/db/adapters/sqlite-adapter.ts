@@ -745,6 +745,49 @@ export const sqliteAdapter = {
     });
   },
 
+  deleteInstance(instanceId: string, organizationId?: string) {
+    return sqlite.transaction(() => {
+      const owned = organizationId
+        ? sqlite.prepare(`
+            SELECT id FROM whatsapp_instances WHERE id = ? AND organization_id = ?
+          `).get(instanceId, organizationId)
+        : sqlite.prepare('SELECT id FROM whatsapp_instances WHERE id = ?').get(instanceId);
+      if (!owned) return false;
+
+      sqlite.prepare(`
+        DELETE FROM contact_tags
+        WHERE contact_id IN (SELECT id FROM contacts WHERE instance_id = ?)
+      `).run(instanceId);
+
+      const instanceTables = [
+        'messages',
+        'conversations',
+        'whatsapp_event_logs',
+        'outbound_messages',
+        'ai_runs',
+        'media_assets',
+        'baileys_auth_creds',
+        'baileys_auth_keys',
+        'worker_commands',
+        'webhook_deliveries',
+        'user_api_keys',
+        'usage_events',
+        'audit_logs',
+        'contacts',
+        'message_templates',
+        'auto_reply_rules',
+        'agent_memories',
+        'instance_health_samples',
+        'connection_events',
+      ];
+      for (const table of instanceTables) {
+        sqlite.prepare(`DELETE FROM ${table} WHERE instance_id = ?`).run(instanceId);
+      }
+      sqlite.prepare('DELETE FROM whatsapp_instances WHERE id = ?').run(instanceId);
+      return true;
+    })();
+  },
+
   addEventLog(instanceId: string, eventType: string, payload: unknown) {
     sqlite.prepare('INSERT INTO whatsapp_event_logs (id, instance_id, event_type, payload, received_at) VALUES (?, ?, ?, ?, ?)')
       .run(id(), instanceId, eventType, json(payload), now());
@@ -1003,6 +1046,20 @@ export const sqliteAdapter = {
       ORDER BY created_at ASC
       LIMIT ?
     `).all(cutoff, limit) as Array<{
+      id: string;
+      storage_path: string | null;
+      storage_provider: string;
+      storage_key: string | null;
+    }>;
+  },
+
+  listInstanceMediaAssets(instanceId: string) {
+    return sqlite.prepare(`
+      SELECT id, storage_path, storage_provider, storage_key
+      FROM media_assets
+      WHERE instance_id = ? AND (storage_path IS NOT NULL OR storage_key IS NOT NULL)
+      ORDER BY created_at ASC
+    `).all(instanceId) as Array<{
       id: string;
       storage_path: string | null;
       storage_provider: string;

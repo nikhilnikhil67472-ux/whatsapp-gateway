@@ -23,3 +23,16 @@ test('a stale socket cannot release the replacement socket lease', () => {
   );
   assert.match(closeHandler, /await lease\.release\(\)/);
 });
+
+test('instance deletion suppresses reconnects and clears persistent auth state', () => {
+  const source = fs.readFileSync(new URL('./manager.ts', import.meta.url), 'utf8');
+  const deletionBlock = source.slice(
+    source.indexOf('static async prepareInstanceDeletion'),
+    source.indexOf('static finishInstanceDeletion'),
+  );
+
+  assert.match(source, /instance\.status === 'deleting'/);
+  assert.match(deletionBlock, /engineState\.deleting\.add\(instanceId\)/);
+  assert.match(deletionBlock, /deleteInstanceAuthState\(instanceId\)/);
+  assert.match(deletionBlock, /engineState\.leases\.delete\(instanceId\)/);
+});

@@ -178,6 +178,23 @@ export const openApiDocument = {
         },
       },
     },
+    '/api/instances/{id}': {
+      delete: {
+        tags: ['Instances'],
+        summary: 'Permanently delete an instance',
+        description: 'Stops the socket and asynchronously removes its auth state, messages, media, webhooks, automations, and instance-scoped API keys.',
+        security: [{ dashboardCookie: [] }],
+        parameters: [
+          { $ref: '#/components/parameters/InstanceId' },
+        ],
+        responses: {
+          202: { description: 'Instance deletion queued.' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { description: 'Instance not found.' },
+        },
+      },
+    },
     '/api/instances/{id}/restart': {
       post: {
         tags: ['Instances'],

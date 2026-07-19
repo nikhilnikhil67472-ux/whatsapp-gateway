@@ -28,7 +28,7 @@ test('legacy multi-file auth is fully migrated, encrypted, and removable', async
     JSON.stringify(Uint8Array.from([1, 2, 3]), BufferJSON.replacer),
   );
 
-  const [{ createSqliteAuthState }, { db }] = await Promise.all([
+  const [{ createSqliteAuthState, deleteInstanceAuthState }, { db }] = await Promise.all([
     import('./session-store'),
     import('../db'),
   ]);
@@ -41,5 +41,12 @@ test('legacy multi-file auth is fully migrated, encrypted, and removable', async
   assert.match(storedCreds || '', /^wag-encrypted:v1:/);
   assert.ok(storedKeys.length >= 1);
   assert.ok(storedKeys.every((row) => row.data.startsWith('wag-encrypted:v1:')));
+  assert.equal(fs.existsSync(sessionDirectory), false);
+
+  fs.mkdirSync(sessionDirectory, { recursive: true });
+  fs.writeFileSync(path.join(sessionDirectory, 'stale-key.json'), '{}');
+  await deleteInstanceAuthState(instanceId);
+  assert.equal(db.getAuthCreds(instanceId), null);
+  assert.deepEqual(db.listAuthKeys(instanceId), []);
   assert.equal(fs.existsSync(sessionDirectory), false);
 });

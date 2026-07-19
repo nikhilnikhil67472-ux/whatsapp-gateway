@@ -479,6 +479,18 @@ body {
   box-shadow: none;
 }
 
+.btn-danger {
+  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.18);
+}
+
 .btn-small {
   min-height: 34px;
   padding: 7px 10px;
@@ -583,6 +595,7 @@ tbody tr:last-child td {
 .status-badge.disconnected,
 .status-badge.failed,
 .status-badge.logged_out,
+.status-badge.deleting,
 .status-badge.error {
   background: var(--danger-soft);
   color: #991b1b;
@@ -1069,6 +1082,34 @@ pre {
   .config-warn {
     grid-column: 2;
   }
+}
+
+.delete-instance-dialog {
+  width: 460px;
+}
+
+.delete-dialog-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 14px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: 7px;
+}
+
+.delete-instance-dialog .help-text {
+  margin: -6px 0 18px;
+  line-height: 1.5;
+}
+
+.delete-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
 }
 
 /* Product navigation */
@@ -2706,6 +2747,10 @@ pre {
 }
 
 @media (max-width: 560px) {
+  .delete-dialog-actions .btn {
+    width: 100%;
+  }
+
   .metric-grid {
     grid-template-columns: 1fr;
   }

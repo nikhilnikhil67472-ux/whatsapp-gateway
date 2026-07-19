@@ -79,6 +79,9 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
     const resolvedInstanceId = instance.id;
+    if (instance.status === 'deleting') {
+      return NextResponse.json({ error: 'Instance deletion is in progress' }, { status: 409 });
+    }
     const authorization = authorizeGatewayRequest(req, instance);
     if (!authorization.ok) {
       return NextResponse.json({ error: authorization.error }, { status: authorization.status });

@@ -3,6 +3,7 @@ import { Home, Settings, MessageSquare, QrCode, Activity } from 'lucide-react';
 import CreateInstanceForm from './CreateInstanceForm';
 import { db } from '@/lib/db';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
+import DeleteInstanceButton from './DeleteInstanceButton';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -112,6 +113,12 @@ export default async function InstancesPage() {
                     <Link href={`/dashboard/instances/${instance.id}/conversations`} className="btn btn-secondary btn-small">
                       <MessageSquare size={16} /> Chats
                     </Link>
+                    {session.role === 'admin' && (
+                      <DeleteInstanceButton
+                        instanceId={instance.id}
+                        instanceName={instance.instance_name}
+                      />
+                    )}
                   </div>
                 </td>
               </tr>

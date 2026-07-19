@@ -135,3 +135,13 @@ export async function deleteStoredMedia(asset: {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 }
+
+export async function deleteStoredInstanceMediaDirectory(instanceId: string) {
+  const publicRoot = path.resolve(process.cwd(), 'public');
+  const mediaRoot = path.resolve(publicRoot, 'media');
+  const instanceDirectory = path.resolve(mediaRoot, instanceId);
+  if (!instanceDirectory.startsWith(`${mediaRoot}${path.sep}`)) {
+    throw new Error('Refusing to delete media outside the public media directory');
+  }
+  await fs.promises.rm(instanceDirectory, { recursive: true, force: true });
+}

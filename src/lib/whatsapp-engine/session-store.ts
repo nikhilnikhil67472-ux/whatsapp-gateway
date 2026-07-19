@@ -279,3 +279,13 @@ export async function clearSqliteAuthState(instanceId: string) {
   migratedAuthInstances.delete(instanceId);
   db.clearAuthState(instanceId);
 }
+
+export async function deleteInstanceAuthState(instanceId: string) {
+  await clearSqliteAuthState(instanceId);
+  const sessionRoot = path.resolve(getLegacySessionRoot());
+  const sessionDirectory = path.resolve(sessionRoot, instanceId);
+  if (!sessionDirectory.startsWith(`${sessionRoot}${path.sep}`)) {
+    throw new Error('Refusing to delete a session outside the WhatsApp session root');
+  }
+  await fs.promises.rm(sessionDirectory, { recursive: true, force: true });
+}

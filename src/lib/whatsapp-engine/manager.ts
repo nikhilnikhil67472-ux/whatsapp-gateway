@@ -6,7 +6,11 @@ import pino from 'pino';
 import QRCode from 'qrcode';
 import { db } from '../db';
 import { bindEvents } from './events';
-import { clearSqliteAuthState, createSqliteAuthState } from './session-store';
+import {
+  clearSqliteAuthState,
+  createSqliteAuthState,
+  deleteInstanceAuthState,
+} from './session-store';
 import {
   acquireDistributedLease,
   DistributedLease,
@@ -20,6 +24,7 @@ type EngineState = {
   reconnectAttempts: Map<string, number>;
   reconnectTimers: Map<string, NodeJS.Timeout>;
   leases: Map<string, DistributedLease>;
+  deleting: Set<string>;
 };
 
 const globalState = globalThis as typeof globalThis & {
@@ -33,10 +38,12 @@ const engineState: EngineState = globalState.whatsappEngineState || {
   reconnectAttempts: new Map(),
   reconnectTimers: new Map(),
   leases: new Map(),
+  deleting: new Set(),
 };
 
 engineState.intentionalSockets ||= new WeakSet();
 engineState.leases ||= new Map();
+engineState.deleting ||= new Set();
 globalState.whatsappEngineState = engineState;
 
 function getDisconnectStatusCode(error: unknown) {
@@ -65,6 +72,8 @@ function shouldReconnect(statusCode: number | null) {
 }
 
 function scheduleReconnect(instanceId: string) {
+  const instance = db.getInstance(instanceId);
+  if (!instance || instance.status === 'deleting' || engineState.deleting.has(instanceId)) return;
   if (engineState.reconnectTimers.has(instanceId)) {
     return;
   }
@@ -114,6 +123,7 @@ export class WhatsAppEngineManager {
       reconnectScheduled: engineState.reconnectTimers.has(instanceId),
       reconnectAttempts: engineState.reconnectAttempts.get(instanceId) || 0,
       distributedLease: engineState.leases.get(instanceId)?.distributed || false,
+      deleting: engineState.deleting.has(instanceId),
     };
   }
 
@@ -167,8 +177,14 @@ export class WhatsAppEngineManager {
   }
 
   static async startInstance(instanceId: string) {
-    if (engineState.sockets.has(instanceId) || engineState.starting.has(instanceId)) return;
-    if (!db.getInstance(instanceId)) throw new Error(`WhatsApp instance ${instanceId} does not exist`);
+    if (
+      engineState.sockets.has(instanceId)
+      || engineState.starting.has(instanceId)
+      || engineState.deleting.has(instanceId)
+    ) return;
+    const instance = db.getInstance(instanceId);
+    if (!instance) throw new Error(`WhatsApp instance ${instanceId} does not exist`);
+    if (instance.status === 'deleting') return;
 
     clearReconnectTimer(instanceId);
     engineState.starting.add(instanceId);
@@ -177,9 +193,17 @@ export class WhatsAppEngineManager {
     try {
       const lease = await acquireDistributedLease(`instance:${instanceId}`);
       if (!lease.acquired) {
+        if (db.getInstance(instanceId)?.status === 'deleting') return;
         db.updateInstance(instanceId, { status: 'standby' });
         db.recordConnectionEvent(instanceId, 'standby', 'Owned by another worker node');
         scheduleReconnect(instanceId);
+        return;
+      }
+      if (
+        engineState.deleting.has(instanceId)
+        || db.getInstance(instanceId)?.status === 'deleting'
+      ) {
+        await lease.release();
         return;
       }
       engineState.leases.set(instanceId, lease);
@@ -199,6 +223,7 @@ export class WhatsAppEngineManager {
       bindEvents(instanceId, sock);
 
       sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
+        if (engineState.deleting.has(instanceId) && connection !== 'close') return;
         if (qr) {
           try {
             const qrBase64 = await QRCode.toDataURL(qr, { margin: 1, width: 360 });
@@ -242,6 +267,7 @@ export class WhatsAppEngineManager {
           engineState.leases.delete(instanceId);
         }
         await lease.release();
+        if (engineState.deleting.has(instanceId)) return;
         if (!isCurrentSocket && intentional) return;
         const reconnect = !intentional && shouldReconnect(statusCode);
 
@@ -320,6 +346,49 @@ export class WhatsAppEngineManager {
       });
       db.recordConnectionEvent(instanceId, 'logged_out', 'User requested logout');
     }
+  }
+
+  static async prepareInstanceDeletion(instanceId: string) {
+    engineState.deleting.add(instanceId);
+    clearReconnectTimer(instanceId);
+    const sock = engineState.sockets.get(instanceId);
+    engineState.sockets.delete(instanceId);
+    if (sock) engineState.intentionalSockets.add(sock);
+
+    try {
+      if (sock) {
+        let timeout: NodeJS.Timeout | null = null;
+        try {
+          await Promise.race([
+            sock.logout(),
+            new Promise<never>((_, reject) => {
+              timeout = setTimeout(
+                () => reject(new Error('WhatsApp logout timed out')),
+                10_000,
+              );
+            }),
+          ]);
+        } finally {
+          if (timeout) clearTimeout(timeout);
+        }
+      }
+    } catch (error) {
+      logger.warn({
+        instance_id: instanceId,
+        ...errorDetails(error),
+      }, 'WhatsApp logout failed during instance deletion; local cleanup will continue.');
+      sock?.end?.(new Error('Instance deleted by user'));
+    } finally {
+      const lease = engineState.leases.get(instanceId);
+      engineState.leases.delete(instanceId);
+      await lease?.release();
+      await deleteInstanceAuthState(instanceId);
+      engineState.reconnectAttempts.delete(instanceId);
+    }
+  }
+
+  static finishInstanceDeletion(instanceId: string) {
+    engineState.deleting.delete(instanceId);
   }
 
   static async restartInstance(instanceId: string) {

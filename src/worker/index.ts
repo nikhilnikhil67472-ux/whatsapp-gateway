@@ -52,7 +52,47 @@ type Runtime = {
   createWebhookHeaders: typeof import('../lib/webhooks/signature').createWebhookHeaders;
   publishQueueJob: typeof import('../lib/queue/redis').publishQueueJob;
   deleteStoredMedia: typeof import('../lib/media/storage').deleteStoredMedia;
+  deleteStoredInstanceMediaDirectory: typeof import('../lib/media/storage').deleteStoredInstanceMediaDirectory;
 };
+
+type DeleteInstanceCommand = {
+  instance_id: string;
+  payload?: { user_id?: string | null } | null;
+};
+
+async function deleteInstance(runtime: Runtime, command: DeleteInstanceCommand) {
+  const { db, WhatsAppEngineManager } = runtime;
+  const instance = db.getInstance(command.instance_id);
+  if (!instance) return;
+
+  activeOperations.add(instance.id);
+  try {
+    await WhatsAppEngineManager.prepareInstanceDeletion(instance.id);
+    const assets = db.listInstanceMediaAssets(instance.id);
+    for (const asset of assets) {
+      await runtime.deleteStoredMedia(asset);
+    }
+    await runtime.deleteStoredInstanceMediaDirectory(instance.id);
+
+    const deleted = db.deleteInstance(instance.id, instance.organization_id);
+    if (!deleted) return;
+    db.addAuditLog({
+      organization_id: instance.organization_id,
+      user_id: command.payload?.user_id || null,
+      action: 'instance.deleted',
+      target_type: 'instance',
+      target_id: instance.id,
+      metadata: { instance_name: instance.instance_name },
+    });
+    logger.info({
+      instance_id: instance.id,
+      instance_name: instance.instance_name,
+    }, 'WhatsApp instance and related data deleted.');
+  } finally {
+    WhatsAppEngineManager.finishInstanceDeletion(instance.id);
+    activeOperations.delete(instance.id);
+  }
+}
 
 async function processWorkerCommands(runtime: Runtime, recordId?: string) {
   const { WhatsAppEngineManager, db } = runtime;
@@ -64,6 +104,11 @@ async function processWorkerCommands(runtime: Runtime, recordId?: string) {
     if (!db.markWorkerCommandProcessing(command.id)) continue;
 
     try {
+      const instance = db.getInstance(command.instance_id);
+      if (command.command !== 'delete' && instance?.status === 'deleting') {
+        db.completeWorkerCommand(command.id);
+        continue;
+      }
       if (command.command === 'start') {
         await WhatsAppEngineManager.startInstance(command.instance_id);
       } else if (command.command === 'restart') {
@@ -72,6 +117,8 @@ async function processWorkerCommands(runtime: Runtime, recordId?: string) {
         await WhatsAppEngineManager.logoutInstance(command.instance_id);
       } else if (command.command === 'stop') {
         await WhatsAppEngineManager.stopInstance(command.instance_id);
+      } else if (command.command === 'delete') {
+        await deleteInstance(runtime, command);
       } else {
         throw new Error(`Unsupported worker command: ${command.command}`);
       }
@@ -142,6 +189,7 @@ async function processPendingOutboundMessages(runtime: Runtime, recordId?: strin
     try {
       const instance = db.getInstance(message.instance_id);
       if (!instance) throw new Error('WhatsApp instance no longer exists');
+      if (instance.status === 'deleting') throw new Error('WhatsApp instance deletion is in progress');
       const contact = db.getContactByRemoteJid(message.instance_id, message.remote_jid);
       if (contact?.opted_out && !message.payload?.allowOptedOut) {
         throw new Error('Recipient opted out of automated messages');
@@ -284,6 +332,10 @@ async function processWebhookDeliveries(runtime: Runtime, recordId?: string) {
     const instance = db.getInstance(delivery.instance_id);
     if (!instance) {
       db.markWebhookDeliveryFailed(delivery.id, 'WhatsApp instance no longer exists');
+      continue;
+    }
+    if (instance.status === 'deleting') {
+      db.markWebhookDeliveryFailed(delivery.id, 'WhatsApp instance deletion is in progress');
       continue;
     }
 
@@ -446,7 +498,7 @@ async function main() {
     { decrypt },
     { createWebhookHeaders },
     { publishQueueJob },
-    { deleteStoredMedia },
+    { deleteStoredMedia, deleteStoredInstanceMediaDirectory },
   ] = await Promise.all([
     import('../lib/whatsapp-engine/manager'),
     import('../lib/db'),
@@ -469,6 +521,7 @@ async function main() {
     createWebhookHeaders,
     publishQueueJob,
     deleteStoredMedia,
+    deleteStoredInstanceMediaDirectory,
   };
 
   logger.info({

@@ -11,7 +11,7 @@
     "worker": "tsx src/worker/index.ts",
     "postinstall": "node scripts/patch-whatsapp-rust-bridge.cjs",
     "lint": "eslint",
-    "test": "tsx --test src/app/api/api-routes.integration.test.ts src/lib/security/security.test.ts src/lib/whatsapp-engine/event-settings.test.ts src/lib/whatsapp-engine/legacy-auth.test.ts src/lib/whatsapp-engine/manager-state.test.ts src/lib/whatsapp-engine/session-store.test.ts"
+    "test": "tsx --test src/app/api/api-routes.integration.test.ts src/lib/db/delete-instance.test.ts src/lib/security/security.test.ts src/lib/whatsapp-engine/event-settings.test.ts src/lib/whatsapp-engine/legacy-auth.test.ts src/lib/whatsapp-engine/manager-state.test.ts src/lib/whatsapp-engine/session-store.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1089.0",

@@ -9,6 +9,7 @@ export interface DbAdapter {
   readonly getInstanceByIdentifier: SqliteAdapterContract['getInstanceByIdentifier'];
   readonly createInstance: SqliteAdapterContract['createInstance'];
   readonly updateInstance: SqliteAdapterContract['updateInstance'];
+  readonly deleteInstance: SqliteAdapterContract['deleteInstance'];
   readonly addEventLog: SqliteAdapterContract['addEventLog'];
   readonly listEventLogs: SqliteAdapterContract['listEventLogs'];
   readonly listAiRuns: SqliteAdapterContract['listAiRuns'];
@@ -28,6 +29,7 @@ export interface DbAdapter {
   readonly listOutboundMessages: SqliteAdapterContract['listOutboundMessages'];
   readonly countRecentOutbound: SqliteAdapterContract['countRecentOutbound'];
   readonly listExpiredMediaAssets: SqliteAdapterContract['listExpiredMediaAssets'];
+  readonly listInstanceMediaAssets: SqliteAdapterContract['listInstanceMediaAssets'];
   readonly deleteMediaAssets: SqliteAdapterContract['deleteMediaAssets'];
   readonly purgeOperationalRecords: SqliteAdapterContract['purgeOperationalRecords'];
   readonly getQueueStats: SqliteAdapterContract['getQueueStats'];

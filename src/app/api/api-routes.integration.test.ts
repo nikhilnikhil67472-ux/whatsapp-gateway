@@ -32,6 +32,7 @@ let db: typeof import('../../lib/db').db;
 let sendMessage: typeof import('./whatsapp/send/route').POST;
 let createInstance: typeof import('./instances/create/route').POST;
 let getInstance: typeof import('./instances/[id]/route').GET;
+let deleteInstance: typeof import('./instances/[id]/route').DELETE;
 let createWebhookHeaders: typeof import('../../lib/webhooks/signature').createWebhookHeaders;
 let verifyWebhookSignature: typeof import('../../lib/webhooks/signature').verifyWebhookSignature;
 let gatewayProxy: typeof import('../../proxy').proxy;
@@ -85,6 +86,7 @@ test.before(async () => {
   sendMessage = sendRoute.POST;
   createInstance = createRoute.POST;
   getInstance = instanceRoute.GET;
+  deleteInstance = instanceRoute.DELETE;
   createWebhookHeaders = webhookSignature.createWebhookHeaders;
   verifyWebhookSignature = webhookSignature.verifyWebhookSignature;
   gatewayProxy = proxyModule.proxy;
@@ -273,6 +275,57 @@ test('GET /api/instances/[id] hides another organization instance', async () => 
   assert.equal(allowed.status, 200);
 });
 
+test('DELETE /api/instances/[id] requires admin auth and preserves organization isolation', async () => {
+  const unauthenticated = await deleteInstance(
+    new NextRequest(`http://localhost/api/instances/${orgAInstanceId}`, { method: 'DELETE' }),
+    { params: Promise.resolve({ id: orgAInstanceId }) },
+  );
+  const crossOrganization = await deleteInstance(
+    new NextRequest(`http://localhost/api/instances/${orgBInstanceId}`, {
+      method: 'DELETE',
+      headers: { Cookie: `${dashboardCookie}=${orgASession}` },
+    }),
+    { params: Promise.resolve({ id: orgBInstanceId }) },
+  );
+
+  assert.equal(unauthenticated.status, 401);
+  assert.equal(crossOrganization.status, 404);
+  assert.notEqual(db.getInstance(orgAInstanceId)?.status, 'deleting');
+  assert.notEqual(db.getInstance(orgBInstanceId)?.status, 'deleting');
+});
+
+test('DELETE /api/instances/[id] marks the instance and queues one idempotent delete command', async () => {
+  const targetId = db.createInstance({
+    organization_id: 'org-a',
+    instance_name: 'delete-route-instance',
+    status: 'connected',
+  });
+  const request = () => new NextRequest(`http://localhost/api/instances/${targetId}`, {
+    method: 'DELETE',
+    headers: { Cookie: `${dashboardCookie}=${orgASession}` },
+  });
+
+  const first = await deleteInstance(request(), { params: Promise.resolve({ id: targetId }) });
+  const firstBody = await first.json() as { commandId?: string; queued?: boolean };
+  const second = await deleteInstance(request(), { params: Promise.resolve({ id: targetId }) });
+  const secondBody = await second.json() as { commandId?: string; queued?: boolean };
+  const commands = db.listPendingWorkerCommands(100)
+    .filter((command) => command.instance_id === targetId && command.command === 'delete');
+
+  assert.equal(first.status, 202);
+  assert.equal(second.status, 202);
+  assert.equal(firstBody.queued, true);
+  assert.equal(firstBody.commandId, secondBody.commandId);
+  assert.equal(db.getInstance(targetId)?.status, 'deleting');
+  assert.equal(commands.length, 1);
+
+  const sendWhileDeleting = await sendMessage(postJson(
+    'http://localhost/api/whatsapp/send',
+    { ...validSendPayload(), instanceId: targetId },
+  ));
+  assert.equal(sendWhileDeleting.status, 409);
+});
+
 test('hackathon public mode bypasses API and dashboard auth on the exact host only', async () => {
   process.env.HACKATHON_PUBLIC_MODE = 'true';
   process.env.HACKATHON_PUBLIC_HOST = 'codex-hackathon-winner.duckdns.org';
@@ -309,6 +362,15 @@ test('hackathon public mode bypasses API and dashboard auth on the exact host on
       { params: Promise.resolve({ id: createdBody.data?.id || '' }) },
     );
     assert.equal(fetched.status, 200);
+
+    const publicDelete = await deleteInstance(
+      new NextRequest(
+        `https://codex-hackathon-winner.duckdns.org/api/instances/${createdBody.data?.id}`,
+        { method: 'DELETE' },
+      ),
+      { params: Promise.resolve({ id: createdBody.data?.id || '' }) },
+    );
+    assert.equal(publicDelete.status, 202);
 
     const dashboardResponse = gatewayProxy(new NextRequest(
       'https://codex-hackathon-winner.duckdns.org/dashboard/instances',

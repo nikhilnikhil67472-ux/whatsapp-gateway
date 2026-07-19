@@ -22,6 +22,9 @@ export async function POST(
   const { id } = await params;
   const instance = db.getInstance(id, auth.session.organizationId);
   if (!instance) return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+  if (instance.status === 'deleting') {
+    return NextResponse.json({ error: 'Instance deletion is in progress' }, { status: 409 });
+  }
   const digits = parsed.data.phoneNumber.replace(/\D/g, '');
   if (digits.length < 7 || digits.length > 15) {
     return NextResponse.json({ error: 'Use a valid country-code phone number' }, { status: 400 });

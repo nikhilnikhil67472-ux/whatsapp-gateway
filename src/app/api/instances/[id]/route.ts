@@ -4,6 +4,7 @@ import { getEventSettings } from '@/lib/whatsapp-engine/event-settings';
 import { toPublicInstance } from '@/lib/instances/public-instance';
 import { encrypt } from '@/lib/security/encrypt';
 import { requireDashboardRole } from '@/lib/security/dashboard-session';
+import { enqueueWorkerCommand } from '@/lib/queue/enqueue';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -129,5 +130,50 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = requireDashboardRole(req, 'admin');
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  try {
+    const { id } = await params;
+    const instance = db.getInstance(id, auth.session.organizationId);
+    if (!instance) {
+      return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+    }
+
+    const alreadyDeleting = instance.status === 'deleting';
+    if (!alreadyDeleting) {
+      db.updateInstance(id, { status: 'deleting', qr_base64: null, qr_updated_at: null });
+      db.addAuditLog({
+        organization_id: instance.organization_id,
+        user_id: auth.session.userId,
+        instance_id: id,
+        action: 'instance.delete_requested',
+        target_type: 'instance',
+        target_id: id,
+        ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || null,
+        user_agent: req.headers.get('user-agent'),
+        metadata: { instance_name: instance.instance_name },
+      });
+    }
+
+    const commandId = await enqueueWorkerCommand(id, 'delete', {
+      user_id: auth.session.userId,
+      organization_id: instance.organization_id,
+      instance_name: instance.instance_name,
+    });
+    return NextResponse.json({
+      success: true,
+      queued: true,
+      commandId,
+      message: alreadyDeleting ? 'Instance deletion is already in progress.' : 'Instance deletion queued.',
+    }, { status: 202 });
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Failed to delete instance',
+    }, { status: 500 });
   }
 }
