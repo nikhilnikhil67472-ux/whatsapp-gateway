@@ -1,12 +1,21 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import {
   DASHBOARD_COOKIE,
   DashboardSession,
   dashboardAuthConfigured,
   readDashboardSession,
 } from './dashboard-auth';
+import {
+  createHackathonPublicSession,
+  isHackathonPublicHeaders,
+} from './hackathon-public-mode';
 
 export async function getServerDashboardSession(): Promise<DashboardSession> {
+  const requestHeaders = await headers();
+  if (isHackathonPublicHeaders(requestHeaders)) {
+    return createHackathonPublicSession();
+  }
+
   const cookieStore = await cookies();
   const session = readDashboardSession(cookieStore.get(DASHBOARD_COOKIE)?.value);
   if (session) return session;

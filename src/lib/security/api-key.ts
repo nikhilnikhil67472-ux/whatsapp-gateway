@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { db } from '../db';
+import { isHackathonPublicRequest } from './hackathon-public-mode';
 
 export function generateApiKey() {
   return `wag_${crypto.randomBytes(24).toString('base64url')}`;
@@ -69,6 +70,18 @@ export function authorizeGatewayRequest(
   },
   requiredScope = 'messages:send',
 ) {
+  if (isHackathonPublicRequest(request)) {
+    return {
+      ok: true as const,
+      role: 'admin',
+      source: 'hackathon-public' as const,
+      organizationId: instance?.organization_id || 'org_default',
+      userId: 'user_admin',
+      apiKeyId: null,
+      rateLimitKey: `hackathon-public:${instance?.id || 'global'}`,
+    };
+  }
+
   const supplied = readApiKey(request);
   const globalKey = process.env.GATEWAY_API_KEY;
   const insecureAllowed = process.env.ALLOW_INSECURE_API === 'true' || process.env.NODE_ENV !== 'production';

@@ -4,8 +4,13 @@ import {
   dashboardAuthConfigured,
   verifyDashboardSession,
 } from '@/lib/security/dashboard-auth';
+import { isHackathonPublicRequest } from '@/lib/security/hackathon-public-mode';
 
 export function proxy(request: NextRequest) {
+  if (isHackathonPublicRequest(request)) {
+    return NextResponse.next();
+  }
+
   if (!dashboardAuthConfigured()) {
     if (process.env.NODE_ENV !== 'production') return NextResponse.next();
     if (request.nextUrl.pathname.startsWith('/api/')) {

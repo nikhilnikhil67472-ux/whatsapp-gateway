@@ -20,6 +20,11 @@ import {
   verifyWebhookSignature,
 } from '../webhooks/signature';
 import { hashPassword, verifyPassword } from './password';
+import {
+  isHackathonPublicHeaders,
+  isHackathonPublicModeConfigured,
+  isHackathonPublicRequest,
+} from './hackathon-public-mode';
 
 test('instance API keys authenticate without storing the raw value', () => {
   const key = generateApiKey();
@@ -124,4 +129,91 @@ test('team passwords use salted scrypt hashes', () => {
   assert.notEqual(first, second);
   assert.equal(verifyPassword('correct horse battery staple', first), true);
   assert.equal(verifyPassword('wrong password', first), false);
+});
+
+test('hackathon public mode only matches the configured hostname', () => {
+  const previousMode = process.env.HACKATHON_PUBLIC_MODE;
+  const previousHost = process.env.HACKATHON_PUBLIC_HOST;
+  process.env.HACKATHON_PUBLIC_MODE = 'true';
+  process.env.HACKATHON_PUBLIC_HOST = 'codex-hackathon-winner.duckdns.org';
+
+  try {
+    assert.equal(isHackathonPublicModeConfigured(), true);
+    assert.equal(isHackathonPublicRequest(new Request(
+      'https://codex-hackathon-winner.duckdns.org/api/whatsapp/send',
+    )), true);
+    assert.equal(isHackathonPublicHeaders(new Headers({
+      host: 'CODEX-HACKATHON-WINNER.DUCKDNS.ORG:443',
+    })), true);
+    assert.equal(isHackathonPublicRequest(new Request(
+      'http://54.226.66.175/api/whatsapp/send',
+    )), false);
+    assert.equal(isHackathonPublicRequest(new Request(
+      'https://codex-hackathon-winner.duckdns.org.example.com/api/whatsapp/send',
+    )), false);
+  } finally {
+    if (previousMode === undefined) delete process.env.HACKATHON_PUBLIC_MODE;
+    else process.env.HACKATHON_PUBLIC_MODE = previousMode;
+    if (previousHost === undefined) delete process.env.HACKATHON_PUBLIC_HOST;
+    else process.env.HACKATHON_PUBLIC_HOST = previousHost;
+  }
+});
+
+test('hackathon public mode remains closed when disabled or missing a host', () => {
+  const previousMode = process.env.HACKATHON_PUBLIC_MODE;
+  const previousHost = process.env.HACKATHON_PUBLIC_HOST;
+
+  try {
+    process.env.HACKATHON_PUBLIC_MODE = 'false';
+    process.env.HACKATHON_PUBLIC_HOST = 'codex-hackathon-winner.duckdns.org';
+    assert.equal(isHackathonPublicModeConfigured(), false);
+
+    process.env.HACKATHON_PUBLIC_MODE = 'true';
+    delete process.env.HACKATHON_PUBLIC_HOST;
+    assert.equal(isHackathonPublicModeConfigured(), false);
+    assert.equal(isHackathonPublicRequest(new Request(
+      'https://codex-hackathon-winner.duckdns.org/dashboard/instances',
+    )), false);
+  } finally {
+    if (previousMode === undefined) delete process.env.HACKATHON_PUBLIC_MODE;
+    else process.env.HACKATHON_PUBLIC_MODE = previousMode;
+    if (previousHost === undefined) delete process.env.HACKATHON_PUBLIC_HOST;
+    else process.env.HACKATHON_PUBLIC_HOST = previousHost;
+  }
+});
+
+test('hackathon public mode bypasses configured API and metrics credentials', async () => {
+  const previousMode = process.env.HACKATHON_PUBLIC_MODE;
+  const previousHost = process.env.HACKATHON_PUBLIC_HOST;
+  const previousMetricsToken = process.env.METRICS_TOKEN;
+  process.env.HACKATHON_PUBLIC_MODE = 'true';
+  process.env.HACKATHON_PUBLIC_HOST = 'codex-hackathon-winner.duckdns.org';
+  process.env.METRICS_TOKEN = 'private-metrics-token';
+
+  try {
+    const gatewayAuthorization = authorizeGatewayRequest(new Request(
+      'https://codex-hackathon-winner.duckdns.org/api/whatsapp/send',
+    ));
+    assert.equal(gatewayAuthorization.ok, true);
+    if (gatewayAuthorization.ok) {
+      assert.equal(gatewayAuthorization.source, 'hackathon-public');
+    }
+
+    const { GET: getMetrics } = await import('../../app/metrics/route');
+    const metricsResponse = await getMetrics(new Request(
+      'https://codex-hackathon-winner.duckdns.org/metrics',
+    ));
+    const protectedMetricsResponse = await getMetrics(new Request(
+      'http://54.226.66.175/metrics',
+    ));
+    assert.equal(metricsResponse.status, 200);
+    assert.equal(protectedMetricsResponse.status, 401);
+  } finally {
+    if (previousMode === undefined) delete process.env.HACKATHON_PUBLIC_MODE;
+    else process.env.HACKATHON_PUBLIC_MODE = previousMode;
+    if (previousHost === undefined) delete process.env.HACKATHON_PUBLIC_HOST;
+    else process.env.HACKATHON_PUBLIC_HOST = previousHost;
+    if (previousMetricsToken === undefined) delete process.env.METRICS_TOKEN;
+    else process.env.METRICS_TOKEN = previousMetricsToken;
+  }
 });

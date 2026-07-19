@@ -5,6 +5,10 @@ import {
   dashboardAuthConfigured,
   readDashboardSession,
 } from './dashboard-auth';
+import {
+  createHackathonPublicSession,
+  isHackathonPublicRequest,
+} from './hackathon-public-mode';
 
 const roleRank: Record<DashboardRole, number> = {
   viewer: 1,
@@ -20,7 +24,9 @@ export function requireDashboardRole(
   request: NextRequest,
   minimumRole: DashboardRole = 'viewer',
 ) {
-  const session = getDashboardSession(request) || (
+  const session = (
+    isHackathonPublicRequest(request) ? createHackathonPublicSession() : null
+  ) || getDashboardSession(request) || (
     process.env.NODE_ENV !== 'production' && !dashboardAuthConfigured()
       ? {
           expiresAt: Date.now() + 60 * 60 * 1_000,

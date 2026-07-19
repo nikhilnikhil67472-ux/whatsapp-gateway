@@ -34,6 +34,7 @@ let createInstance: typeof import('./instances/create/route').POST;
 let getInstance: typeof import('./instances/[id]/route').GET;
 let createWebhookHeaders: typeof import('../../lib/webhooks/signature').createWebhookHeaders;
 let verifyWebhookSignature: typeof import('../../lib/webhooks/signature').verifyWebhookSignature;
+let gatewayProxy: typeof import('../../proxy').proxy;
 let dashboardCookie = '';
 let orgASession = '';
 let orgBSession = '';
@@ -57,6 +58,8 @@ test.before(async () => {
   delete process.env.GATEWAY_API_KEY;
   delete process.env.API_IP_ALLOWLIST;
   delete process.env.REDIS_URL;
+  delete process.env.HACKATHON_PUBLIC_MODE;
+  delete process.env.HACKATHON_PUBLIC_HOST;
 
   const [
     dbModule,
@@ -66,6 +69,7 @@ test.before(async () => {
     apiKeyModule,
     dashboardAuth,
     webhookSignature,
+    proxyModule,
   ] = await Promise.all([
     import('../../lib/db'),
     import('./whatsapp/send/route'),
@@ -74,6 +78,7 @@ test.before(async () => {
     import('../../lib/security/api-key'),
     import('../../lib/security/dashboard-auth'),
     import('../../lib/webhooks/signature'),
+    import('../../proxy'),
   ]);
 
   db = dbModule.db;
@@ -82,6 +87,7 @@ test.before(async () => {
   getInstance = instanceRoute.GET;
   createWebhookHeaders = webhookSignature.createWebhookHeaders;
   verifyWebhookSignature = webhookSignature.verifyWebhookSignature;
+  gatewayProxy = proxyModule.proxy;
   dashboardCookie = dashboardAuth.DASHBOARD_COOKIE;
   orgASession = dashboardAuth.createDashboardSession({
     userId: 'user-org-a',
@@ -265,6 +271,59 @@ test('GET /api/instances/[id] hides another organization instance', async () => 
 
   assert.equal(denied.status, 404);
   assert.equal(allowed.status, 200);
+});
+
+test('hackathon public mode bypasses API and dashboard auth on the exact host only', async () => {
+  process.env.HACKATHON_PUBLIC_MODE = 'true';
+  process.env.HACKATHON_PUBLIC_HOST = 'codex-hackathon-winner.duckdns.org';
+
+  try {
+    const publicSend = await sendMessage(postJson(
+      'https://codex-hackathon-winner.duckdns.org/api/whatsapp/send',
+      validSendPayload(),
+    ));
+    assert.equal(publicSend.status, 202);
+
+    const protectedSend = await sendMessage(postJson(
+      'http://54.226.66.175/api/whatsapp/send',
+      validSendPayload(),
+    ));
+    assert.equal(protectedSend.status, 401);
+
+    const created = await createInstance(postJson(
+      'https://codex-hackathon-winner.duckdns.org/api/instances/create',
+      { instanceName: 'public-judge-instance' },
+    ));
+    const createdBody = await created.json() as InstanceResponse;
+    assert.equal(created.status, 200);
+    assert.equal(createdBody.data?.organization_id, undefined);
+    assert.equal(
+      db.getInstance(createdBody.data?.id || '')?.organization_id,
+      'org_default',
+    );
+
+    const fetched = await getInstance(
+      getRequest(
+        `https://codex-hackathon-winner.duckdns.org/api/instances/${createdBody.data?.id}`,
+      ),
+      { params: Promise.resolve({ id: createdBody.data?.id || '' }) },
+    );
+    assert.equal(fetched.status, 200);
+
+    const dashboardResponse = gatewayProxy(new NextRequest(
+      'https://codex-hackathon-winner.duckdns.org/dashboard/instances',
+    ));
+    assert.equal(dashboardResponse.headers.get('x-middleware-next'), '1');
+
+    const protectedDashboard = gatewayProxy(new NextRequest(
+      'http://54.226.66.175/dashboard/instances',
+    ));
+    assert.equal(protectedDashboard.status, 307);
+    assert.match(protectedDashboard.headers.get('location') || '', /\/login/);
+  } finally {
+    delete process.env.HACKATHON_PUBLIC_MODE;
+    delete process.env.HACKATHON_PUBLIC_HOST;
+  }
 });
 
 test('webhook signatures reject tampering and otherwise valid expired deliveries', () => {
