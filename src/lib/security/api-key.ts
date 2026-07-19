@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { db } from '../db/sqlite';
+import { db } from '../db';
 
 export function generateApiKey() {
   return `wag_${crypto.randomBytes(24).toString('base64url')}`;

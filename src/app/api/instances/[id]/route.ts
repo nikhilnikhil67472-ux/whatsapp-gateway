@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getEventSettings } from '@/lib/whatsapp-engine/event-settings';
 import { toPublicInstance } from '@/lib/instances/public-instance';
 import { encrypt } from '@/lib/security/encrypt';

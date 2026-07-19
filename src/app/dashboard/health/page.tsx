@@ -9,7 +9,7 @@ import {
   Server,
   Webhook,
 } from 'lucide-react';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getRedisHealth } from '@/lib/queue/redis';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 

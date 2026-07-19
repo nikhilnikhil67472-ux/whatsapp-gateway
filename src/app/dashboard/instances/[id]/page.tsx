@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Bot, CheckCircle2, MessageSquare, QrCode, Settings, TestTube2, XCircle } from 'lucide-react';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 
 export const dynamic = 'force-dynamic';

@@ -1,4 +1,4 @@
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 
 export const dynamic = 'force-dynamic';

@@ -30,7 +30,7 @@ test('legacy multi-file auth is fully migrated, encrypted, and removable', async
 
   const [{ createSqliteAuthState }, { db }] = await Promise.all([
     import('./session-store'),
-    import('../db/sqlite'),
+    import('../db'),
   ]);
   const auth = await createSqliteAuthState(instanceId);
   const key = await auth.state.keys.get('sender-key', ['group/a:b']);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { requireDashboardRole } from '@/lib/security/dashboard-session';
 
 export async function DELETE(

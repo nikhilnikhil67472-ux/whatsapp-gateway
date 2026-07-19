@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getRedisHealth } from '@/lib/queue/redis';
 
 export const dynamic = 'force-dynamic';

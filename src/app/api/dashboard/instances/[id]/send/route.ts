@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { enqueueOutboundMessage } from '@/lib/queue/enqueue';
 import { requireDashboardRole } from '@/lib/security/dashboard-session';
 

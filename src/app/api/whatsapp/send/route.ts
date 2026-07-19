@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { authorizeGatewayRequest } from '@/lib/security/api-key';
 import { enqueueOutboundMessage } from '@/lib/queue/enqueue';
 import { checkRateLimit } from '@/lib/security/rate-limit';

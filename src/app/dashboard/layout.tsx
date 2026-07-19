@@ -1,7 +1,7 @@
 import { RadioTower } from 'lucide-react';
 import './dashboard.css';
 import DashboardNav from './DashboardNav';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {

@@ -3,7 +3,7 @@ import {
   Gauge,
   Registry,
 } from 'prom-client';
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import { getRedisHealth } from '../queue/redis';
 
 type MetricsState = {

@@ -600,7 +600,7 @@ export function initDb() {
 
 initDb();
 
-export const db = {
+export const sqliteAdapter = {
   getOrganization(organizationId = 'org_default') {
     const row = sqlite.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId) as any;
     return row ? {
@@ -2016,4 +2016,4 @@ export const db = {
   },
 };
 
-export default db;
+export default sqliteAdapter;

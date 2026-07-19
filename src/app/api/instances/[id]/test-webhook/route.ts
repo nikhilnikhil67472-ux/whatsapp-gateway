@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import crypto from 'crypto';
 import { decrypt } from '@/lib/security/encrypt';
 import { createWebhookHeaders } from '@/lib/webhooks/signature';

@@ -1,4 +1,4 @@
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 import CrmWorkspace from './CrmWorkspace';
 

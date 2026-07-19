@@ -1,4 +1,4 @@
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import { decrypt } from '../security/encrypt';
 import { ProcessedMedia } from '../whatsapp-engine/media';
 import { NormalizedWhatsAppMessage } from '../whatsapp-engine/normalize';

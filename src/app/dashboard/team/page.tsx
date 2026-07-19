@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { getServerDashboardSession } from '@/lib/security/dashboard-server';
 import TeamWorkspace from './TeamWorkspace';
 

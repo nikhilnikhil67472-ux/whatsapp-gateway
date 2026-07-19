@@ -7,7 +7,7 @@ import {
   proto,
   SignalDataTypeMap,
 } from '@whiskeysockets/baileys';
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import {
   decryptStoredValue,
   encryptStoredValue,

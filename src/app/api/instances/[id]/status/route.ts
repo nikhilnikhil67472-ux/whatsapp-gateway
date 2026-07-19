@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { toPublicInstance } from '@/lib/instances/public-instance';
 import { requireDashboardRole } from '@/lib/security/dashboard-session';
 

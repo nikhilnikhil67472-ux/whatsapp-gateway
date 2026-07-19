@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/security/password';
 import { requireDashboardRole } from '@/lib/security/dashboard-session';
 

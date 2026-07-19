@@ -1,6 +1,6 @@
 import { NormalizedWhatsAppMessage } from '../whatsapp-engine/normalize';
 import { ProcessedMedia } from '../whatsapp-engine/media';
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import crypto from 'crypto';
 import { createWebhookHeaders } from '../webhooks/signature';
 import { errorDetails, logger } from '../observability/logger';

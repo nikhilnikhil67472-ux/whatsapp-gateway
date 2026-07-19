@@ -3,7 +3,7 @@ import { processInboundMedia } from './media';
 import { processWithAgent } from '../ai/agent';
 import { processMediaIntelligence } from '../media/intelligence';
 import { getEventSettings, toJsonSafePayload } from './event-settings';
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import { enrichSenderIdentity } from './identity';
 import {
   enqueueOutboundMessage,

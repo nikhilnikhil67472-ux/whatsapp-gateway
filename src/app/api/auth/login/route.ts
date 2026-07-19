@@ -6,7 +6,7 @@ import {
   shouldUseSecureDashboardCookie,
   verifyDashboardPassword,
 } from '@/lib/security/dashboard-auth';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { verifyPassword } from '@/lib/security/password';
 import { checkRateLimit } from '@/lib/security/rate-limit';
 

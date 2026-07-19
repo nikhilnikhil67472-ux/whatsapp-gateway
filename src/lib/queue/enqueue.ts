@@ -1,4 +1,4 @@
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import { publishQueueJob } from './redis';
 
 export async function enqueueOutboundMessage(data: Record<string, any>) {

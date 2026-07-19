@@ -4,7 +4,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
-import { db } from '../db/sqlite';
+import { db } from '../db';
 import { bindEvents } from './events';
 import { clearSqliteAuthState, createSqliteAuthState } from './session-store';
 import {

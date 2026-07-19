@@ -42,7 +42,7 @@ const activeOperations = new Set<string>();
 
 type Runtime = {
   WhatsAppEngineManager: typeof import('../lib/whatsapp-engine/manager').WhatsAppEngineManager;
-  db: typeof import('../lib/db/sqlite').db;
+  db: typeof import('../lib/db').db;
   sendText: typeof import('../lib/whatsapp-engine/send').sendText;
   sendMedia: typeof import('../lib/whatsapp-engine/send').sendMedia;
   sendAudio: typeof import('../lib/whatsapp-engine/send').sendAudio;
@@ -449,7 +449,7 @@ async function main() {
     { deleteStoredMedia },
   ] = await Promise.all([
     import('../lib/whatsapp-engine/manager'),
-    import('../lib/db/sqlite'),
+    import('../lib/db'),
     import('../lib/whatsapp-engine/send'),
     import('../lib/security/encrypt'),
     import('../lib/webhooks/signature'),

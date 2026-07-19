@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { DEFAULT_EVENT_SETTINGS } from '@/lib/whatsapp-engine/event-settings';
-import { db } from '@/lib/db/sqlite';
+import { db } from '@/lib/db';
 import { generateApiKey, hashApiKey } from '@/lib/security/api-key';
 import { requireDashboardRole } from '@/lib/security/dashboard-session';
 import { enqueueWorkerCommand } from '@/lib/queue/enqueue';
