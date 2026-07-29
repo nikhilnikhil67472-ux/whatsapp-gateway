@@ -33,6 +33,9 @@ let sendMessage: typeof import('./whatsapp/send/route').POST;
 let createInstance: typeof import('./instances/create/route').POST;
 let getInstance: typeof import('./instances/[id]/route').GET;
 let deleteInstance: typeof import('./instances/[id]/route').DELETE;
+let loginRoute: typeof import('./auth/login/route').POST;
+let logoutRoute: typeof import('./auth/logout/route').POST;
+let apiKeyModule: typeof import('../../lib/security/api-key');
 let createWebhookHeaders: typeof import('../../lib/webhooks/signature').createWebhookHeaders;
 let verifyWebhookSignature: typeof import('../../lib/webhooks/signature').verifyWebhookSignature;
 let gatewayProxy: typeof import('../../proxy').proxy;
@@ -67,10 +70,12 @@ test.before(async () => {
     sendRoute,
     createRoute,
     instanceRoute,
-    apiKeyModule,
+    apiKeyMod,
     dashboardAuth,
     webhookSignature,
     proxyModule,
+    loginModule,
+    logoutModule,
   ] = await Promise.all([
     import('../../lib/db'),
     import('./whatsapp/send/route'),
@@ -80,6 +85,8 @@ test.before(async () => {
     import('../../lib/security/dashboard-auth'),
     import('../../lib/webhooks/signature'),
     import('../../proxy'),
+    import('./auth/login/route'),
+    import('./auth/logout/route'),
   ]);
 
   db = dbModule.db;
@@ -87,6 +94,9 @@ test.before(async () => {
   createInstance = createRoute.POST;
   getInstance = instanceRoute.GET;
   deleteInstance = instanceRoute.DELETE;
+  loginRoute = loginModule.POST;
+  logoutRoute = logoutModule.POST;
+  apiKeyModule = apiKeyMod;
   createWebhookHeaders = webhookSignature.createWebhookHeaders;
   verifyWebhookSignature = webhookSignature.verifyWebhookSignature;
   gatewayProxy = proxyModule.proxy;
@@ -425,4 +435,99 @@ test('webhook signatures reject tampering and otherwise valid expired deliveries
   } finally {
     Date.now = actualNow;
   }
+});
+
+test('POST /api/auth/login succeeds with valid password and sets session cookie', async () => {
+  const response = await loginRoute(postJson(
+    'http://localhost/api/auth/login',
+    { password: 'integration-test-password' },
+  ));
+  const body = await response.json() as { success?: boolean };
+  const setCookie = response.headers.get('set-cookie');
+
+  assert.equal(response.status, 200);
+  assert.equal(body.success, true);
+  assert.match(setCookie || '', new RegExp(dashboardCookie));
+});
+
+test('POST /api/auth/login fails with invalid password', async () => {
+  const response = await loginRoute(postJson(
+    'http://localhost/api/auth/login',
+    { password: 'wrong-password' },
+  ));
+  const body = await response.json() as { error?: string };
+
+  assert.equal(response.status, 401);
+  assert.equal(body.error, 'Incorrect email or password');
+});
+
+test('GET /dashboard/* redirects unauthenticated request to /login', () => {
+  const request = new NextRequest('http://localhost/dashboard/instances');
+  const response = gatewayProxy(request);
+
+  assert.equal(response.status, 307);
+  assert.match(response.headers.get('location') || '', /\/login\?next=%2Fdashboard%2Finstances/);
+});
+
+test('GET /dashboard/* allows authenticated request with session cookie', () => {
+  const request = new NextRequest('http://localhost/dashboard/instances', {
+    headers: { Cookie: `${dashboardCookie}=${orgASession}` },
+  });
+  const response = gatewayProxy(request);
+
+  assert.equal(response.headers.get('x-middleware-next'), '1');
+});
+
+test('POST /api/auth/logout clears dashboard session cookie', async () => {
+  const response = await logoutRoute(new NextRequest('http://localhost/api/auth/logout', {
+    method: 'POST',
+    headers: { Cookie: `${dashboardCookie}=${orgASession}` },
+  }));
+  const body = await response.json() as { success?: boolean };
+  const setCookie = response.headers.get('set-cookie');
+
+  assert.equal(response.status, 200);
+  assert.equal(body.success, true);
+  assert.match(setCookie || '', new RegExp(`${dashboardCookie}=;`));
+});
+
+test('POST /api/whatsapp/send rejects an expired API key', async () => {
+  const rawKey = apiKeyModule.generateApiKey();
+  const keyHash = apiKeyModule.hashApiKey(rawKey);
+  db.createUserApiKey({
+    organization_id: 'org-a',
+    name: 'expired-test-key',
+    key_hash: keyHash,
+    key_prefix: rawKey.slice(0, 10),
+    role: 'developer',
+    scopes: ['messages:send'],
+    expires_at: new Date(Date.now() - 60_000).toISOString(),
+  });
+
+  const response = await sendMessage(postJson(
+    'http://localhost/api/whatsapp/send',
+    validSendPayload(),
+    { apiKey: rawKey },
+  ));
+  const body = await response.json() as SendResponse;
+
+  assert.equal(response.status, 403);
+  assert.equal(body.error, 'Invalid API key');
+});
+
+test('hackathon public mode does not bypass auth when disabled', async () => {
+  delete process.env.HACKATHON_PUBLIC_MODE;
+  delete process.env.HACKATHON_PUBLIC_HOST;
+
+  const response = gatewayProxy(new NextRequest(
+    'http://localhost/dashboard/instances',
+  ));
+  assert.equal(response.status, 307);
+  assert.match(response.headers.get('location') || '', /\/login/);
+
+  const sendResponse = await sendMessage(postJson(
+    'http://localhost/api/whatsapp/send',
+    validSendPayload(),
+  ));
+  assert.equal(sendResponse.status, 401);
 });

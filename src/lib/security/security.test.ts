@@ -37,6 +37,25 @@ test('instance API keys authenticate without storing the raw value', () => {
   assert.match(key, /^wag_/);
 });
 
+test('expired user API keys are rejected', () => {
+  const previousKey = process.env.GATEWAY_API_KEY;
+  delete process.env.GATEWAY_API_KEY;
+  try {
+    const rawKey = generateApiKey();
+
+    const mockRequest = new Request('http://localhost/api/whatsapp/send', {
+      headers: { Authorization: `Bearer ${rawKey}` },
+    });
+    // Raw key matches but if key is expired, db.findUserApiKeyByHash returns undefined
+    const authResult = authorizeGatewayRequest(mockRequest);
+    assert.equal(authResult.ok, false);
+    assert.equal(authResult.status, 403);
+    assert.equal(authResult.error, 'Invalid API key');
+  } finally {
+    if (previousKey !== undefined) process.env.GATEWAY_API_KEY = previousKey;
+  }
+});
+
 test('webhook signature covers timestamp and exact body', () => {
   const payload = JSON.stringify({ event: 'message.received', value: 42 });
   const secret = 'test-signing-secret';
