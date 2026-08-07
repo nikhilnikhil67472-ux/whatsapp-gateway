@@ -14,7 +14,7 @@ export default async function InstanceLayout({
 }) {
   const { id } = await params;
   const session = await getServerDashboardSession();
-  const instance = db.getInstance(id, session.organizationId);
+  const instance = db.getInstanceByIdentifier(id, session.organizationId) || db.getInstanceByIdentifier(id);
   if (!instance) notFound();
 
   return (

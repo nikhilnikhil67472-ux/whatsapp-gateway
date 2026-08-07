@@ -22,10 +22,10 @@ function Step({ done, title, detail, href, action }: { done: boolean; title: str
 export default async function InstanceOverviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getServerDashboardSession();
-  const instance = db.getInstance(id, session.organizationId);
+  const instance = db.getInstanceByIdentifier(id, session.organizationId) || db.getInstanceByIdentifier(id);
   if (!instance) return <div>Instance not found</div>;
 
-  const stats = db.getInstanceStats(id);
+  const stats = db.getInstanceStats(instance.id);
   const connected = instance.status === 'connected';
   const hasWebhook = Boolean(instance.n8n_webhook_url);
   const aiEnabled = instance.ai_enabled !== false;
