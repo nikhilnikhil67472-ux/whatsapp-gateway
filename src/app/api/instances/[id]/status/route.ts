@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
-    const instance = db.getInstance(id, auth.session.organizationId);
+    const instance = db.getInstanceByIdentifier(id, auth.session.organizationId);
 
     if (!instance) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });

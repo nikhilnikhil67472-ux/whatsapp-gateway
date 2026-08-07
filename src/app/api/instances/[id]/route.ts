@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
-    const instance = db.getInstance(id, auth.session.organizationId);
+    const instance = db.getInstanceByIdentifier(id, auth.session.organizationId);
     if (!instance) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
     }
@@ -38,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await req.json();
-    const current = db.getInstance(id, auth.session.organizationId);
+    const current = db.getInstanceByIdentifier(id, auth.session.organizationId);
     if (!current) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
     }
@@ -124,7 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({
       success: true,
       data: toPublicInstance(
-        db.getInstance(id, auth.session.organizationId),
+        db.getInstanceByIdentifier(id, auth.session.organizationId),
         { includeWebhookSecret: true },
       ),
     });
@@ -139,7 +139,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const { id } = await params;
-    const instance = db.getInstance(id, auth.session.organizationId);
+    const instance = db.getInstanceByIdentifier(id, auth.session.organizationId);
     if (!instance) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
     }

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   try {
     const { id } = await params;
-    const instance = db.getInstance(id, auth.session.organizationId);
+    const instance = db.getInstanceByIdentifier(id, auth.session.organizationId);
     if (!instance) {
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
     }
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       success: true,
       message: 'Restart requested. The background worker will reconnect this instance.',
       commandId,
-      data: toPublicInstance(db.getInstance(id, auth.session.organizationId)),
+      data: toPublicInstance(db.getInstanceByIdentifier(id, auth.session.organizationId)),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
