@@ -176,7 +176,7 @@ export class WhatsAppEngineManager {
     }
   }
 
-  static async startInstance(instanceId: string) {
+  static async startInstance(instanceId: string, purgeStaleSession = false) {
     if (
       engineState.sockets.has(instanceId)
       || engineState.starting.has(instanceId)
@@ -185,6 +185,8 @@ export class WhatsAppEngineManager {
     const instance = db.getInstance(instanceId);
     if (!instance) throw new Error(`WhatsApp instance ${instanceId} does not exist`);
     if (instance.status === 'deleting') return;
+
+    const needsPurge = purgeStaleSession || !['connected', 'connecting'].includes(instance.status);
 
     clearReconnectTimer(instanceId);
     engineState.starting.add(instanceId);
@@ -207,6 +209,11 @@ export class WhatsAppEngineManager {
         return;
       }
       engineState.leases.set(instanceId, lease);
+
+      if (needsPurge) {
+        logger.info({ instance_id: instanceId }, 'Purging stale auth state for fresh QR.');
+        await clearSqliteAuthState(instanceId);
+      }
 
       const { state, saveCreds } = await createSqliteAuthState(instanceId);
       const sock = makeWASocket({
@@ -393,7 +400,7 @@ export class WhatsAppEngineManager {
 
   static async restartInstance(instanceId: string) {
     await this.stopInstance(instanceId);
-    await this.startInstance(instanceId);
+    await this.startInstance(instanceId, true);
   }
 
   static async shutdownAll() {
