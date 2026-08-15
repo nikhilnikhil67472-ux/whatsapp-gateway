@@ -399,7 +399,11 @@ export class WhatsAppEngineManager {
   }
 
   static async restartInstance(instanceId: string) {
+    const current = db.getInstance(instanceId);
     await this.stopInstance(instanceId);
+    if (current && current.status !== 'connected') {
+      await deleteInstanceAuthState(instanceId);
+    }
     await this.startInstance(instanceId, true);
   }
 

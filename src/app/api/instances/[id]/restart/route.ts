@@ -16,19 +16,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
     }
 
-    db.updateInstance(id, {
+    db.updateInstance(instance.id, {
       status: 'reconnecting',
       qr_base64: null,
       qr_updated_at: new Date().toISOString(),
     });
-    const commandId = await enqueueWorkerCommand(id, 'restart');
+    const commandId = await enqueueWorkerCommand(instance.id, 'restart');
     db.addAuditLog({
       organization_id: auth.session.organizationId,
       user_id: auth.session.userId,
-      instance_id: id,
+      instance_id: instance.id,
       action: 'instance.restart_requested',
       target_type: 'instance',
-      target_id: id,
+      target_id: instance.id,
     });
 
     return NextResponse.json({
