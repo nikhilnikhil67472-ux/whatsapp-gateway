@@ -37,7 +37,7 @@ let captureWorkerException: (
   context?: Record<string, unknown>,
 ) => void = () => {};
 
-const STARTABLE_STATUSES = ['created', 'waiting_qr', 'connecting', 'connected', 'disconnected', 'reconnecting'];
+const STARTABLE_STATUSES = ['created', 'waiting_qr', 'connecting', 'connected', 'disconnected', 'reconnecting', 'standby', 'failed'];
 const activeOperations = new Set<string>();
 
 type Runtime = {
@@ -96,6 +96,12 @@ async function deleteInstance(runtime: Runtime, command: DeleteInstanceCommand) 
 
 async function processWorkerCommands(runtime: Runtime, recordId?: string) {
   const { WhatsAppEngineManager, db } = runtime;
+  // Recover commands stuck in 'processing' from a previous crashed run before
+  // reading the pending queue, otherwise they silently block new enqueues.
+  const reclaimed = db.reclaimStaleWorkerCommands();
+  if (reclaimed > 0) {
+    logger.warn({ reclaimed }, 'Reclaimed stale processing worker commands.');
+  }
   const commands = (
     recordId ? [db.getWorkerCommand(recordId)] : db.listPendingWorkerCommands(20)
   ).filter(Boolean);
@@ -151,6 +157,12 @@ async function startConfiguredInstances({ WhatsAppEngineManager, db }: Runtime) 
   for (const instance of instances) {
     if (WhatsAppEngineManager.getSocket(instance.id) || activeOperations.has(instance.id)) continue;
     if (instance.status === 'reconnecting' && WhatsAppEngineManager.hasReconnectScheduled(instance.id)) continue;
+    // Avoid hammering a persistently failing instance every poll cycle.
+    if (instance.status === 'failed') {
+      const failedAt = Date.parse(instance.last_disconnection_at || instance.updated_at || '');
+      const retryMs = Number(process.env.FAILED_INSTANCE_RETRY_MS || 60_000);
+      if (!Number.isFinite(failedAt) || Date.now() - failedAt < retryMs) continue;
+    }
 
     activeOperations.add(instance.id);
     try {

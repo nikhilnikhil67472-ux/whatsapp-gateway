@@ -97,6 +97,15 @@ export default function QRPage({ params }: { params: Promise<{ id: string }> }) 
               </button>
             </div>
           </div>
+        ) : ['connecting', 'reconnecting'].includes(instance.status) ? (
+          <div>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '18px' }}>
+              Generating QR code... This usually takes a few seconds.
+            </p>
+            <button className="btn btn-secondary" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCcw size={16} /> {refreshing ? 'Requesting...' : 'Generate QR Code'}
+            </button>
+          </div>
         ) : (
           <div>
             <p style={{ color: 'var(--text-muted)', marginBottom: '18px' }}>No QR code is available yet.</p>

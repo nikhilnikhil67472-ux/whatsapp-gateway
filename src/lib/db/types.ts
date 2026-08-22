@@ -51,6 +51,7 @@ export interface DbAdapter {
   readonly markWorkerCommandProcessing: SqliteAdapterContract['markWorkerCommandProcessing'];
   readonly completeWorkerCommand: SqliteAdapterContract['completeWorkerCommand'];
   readonly failWorkerCommand: SqliteAdapterContract['failWorkerCommand'];
+  readonly reclaimStaleWorkerCommands: SqliteAdapterContract['reclaimStaleWorkerCommands'];
   readonly enqueueWebhookDelivery: SqliteAdapterContract['enqueueWebhookDelivery'];
   readonly listPendingWebhookDeliveries: SqliteAdapterContract['listPendingWebhookDeliveries'];
   readonly getWebhookDelivery: SqliteAdapterContract['getWebhookDelivery'];

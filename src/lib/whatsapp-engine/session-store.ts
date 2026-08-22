@@ -13,7 +13,7 @@ import {
   encryptStoredValue,
   isEncryptedStoredValue,
 } from '../security/encrypt';
-import { logger } from '../observability/logger';
+import { errorDetails, logger } from '../observability/logger';
 import {
   legacyAuthFileName,
   parseLegacyAuthKeyFile,
@@ -273,6 +273,23 @@ export async function createSqliteAuthState(
       db.saveAuthCreds(instanceId, encryptStoredValue(serialize(creds)));
     },
   };
+}
+
+export async function hasRegisteredAuthState(instanceId: string) {
+  const storedCreds = db.getAuthCreds(instanceId);
+  if (!storedCreds) return false;
+
+  try {
+    const { value } = decryptStoredValue(storedCreds);
+    const creds = deserialize<AuthenticationState['creds']>(value);
+    return Boolean(creds?.registered);
+  } catch (error) {
+    logger.warn({
+      instance_id: instanceId,
+      ...errorDetails(error),
+    }, 'Could not inspect stored Baileys credentials; treating pairing as absent.');
+    return false;
+  }
 }
 
 export async function clearSqliteAuthState(instanceId: string) {

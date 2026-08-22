@@ -1310,6 +1310,19 @@ export const sqliteAdapter = {
     `).run(errorMessage, now(), commandId);
   },
 
+  // Commands left in 'processing' by a crashed/killed worker would otherwise
+  // block all future enqueues through the pending/processing dedup forever.
+  // Anything older than the timeout is safe to hand back to the queue.
+  reclaimStaleWorkerCommands(timeoutMs = Number(process.env.WORKER_COMMAND_STALE_MS || 120_000)) {
+    const cutoff = new Date(Date.now() - timeoutMs).toISOString();
+    const result = sqlite.prepare(`
+      UPDATE worker_commands
+      SET status = 'pending', started_at = NULL, updated_at = ?
+      WHERE status = 'processing' AND started_at IS NOT NULL AND started_at < ?
+    `).run(now(), cutoff);
+    return result.changes;
+  },
+
   enqueueWebhookDelivery(data: Record<string, any>) {
     const deliveryId = data.id || id();
     const ts = now();

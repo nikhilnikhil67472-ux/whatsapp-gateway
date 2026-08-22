@@ -10,6 +10,7 @@ import {
   clearSqliteAuthState,
   createSqliteAuthState,
   deleteInstanceAuthState,
+  hasRegisteredAuthState,
 } from './session-store';
 import {
   acquireDistributedLease,
@@ -181,16 +182,36 @@ export class WhatsAppEngineManager {
       engineState.sockets.has(instanceId)
       || engineState.starting.has(instanceId)
       || engineState.deleting.has(instanceId)
-    ) return;
+    ) {
+      logger.info({
+        instance_id: instanceId,
+        has_socket: engineState.sockets.has(instanceId),
+        is_starting: engineState.starting.has(instanceId),
+        is_deleting: engineState.deleting.has(instanceId),
+      }, 'WhatsApp startInstance skipped; an operation is already in progress.');
+      return;
+    }
     const instance = db.getInstance(instanceId);
     if (!instance) throw new Error(`WhatsApp instance ${instanceId} does not exist`);
     if (instance.status === 'deleting') return;
 
-    const needsPurge = purgeStaleSession || !['connected', 'connecting'].includes(instance.status);
+    // Only wipe stored auth when explicitly asked (fresh pairing). A routine
+    // reconnect must keep valid credentials, otherwise every hiccup would
+    // force the user to scan a new QR code.
+    const hasRegisteredSession = await hasRegisteredAuthState(instanceId);
+    const needsPurge = purgeStaleSession || !hasRegisteredSession;
+    if (purgeStaleSession && !hasRegisteredSession) {
+      logger.info({
+        instance_id: instanceId,
+      }, 'No stored pairing to purge; generating fresh credentials.');
+    }
 
     clearReconnectTimer(instanceId);
     engineState.starting.add(instanceId);
-    db.updateInstance(instanceId, { status: 'connecting' });
+    db.updateInstance(instanceId, {
+      status: 'connecting',
+      ...(needsPurge ? { qr_base64: null, qr_updated_at: null } : {}),
+    });
 
     try {
       const lease = await acquireDistributedLease(`instance:${instanceId}`);
@@ -398,13 +419,12 @@ export class WhatsAppEngineManager {
     engineState.deleting.delete(instanceId);
   }
 
-  static async restartInstance(instanceId: string) {
-    const current = db.getInstance(instanceId);
+  static async restartInstance(instanceId: string, purgeStaleSession = false) {
+    // Registration-based purge lives inside startInstance: stored auth is only
+    // wiped when explicitly requested or when no valid pairing exists, so a
+    // routine restart never forces the user to scan a new QR code.
     await this.stopInstance(instanceId);
-    if (current && current.status !== 'connected') {
-      await deleteInstanceAuthState(instanceId);
-    }
-    await this.startInstance(instanceId, true);
+    await this.startInstance(instanceId, purgeStaleSession);
   }
 
   static async shutdownAll() {
