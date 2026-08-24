@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { ArrowRight, LockKeyhole } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -72,6 +73,10 @@ export default function LoginForm() {
         {loading ? 'Signing in...' : 'Sign in'}
         {!loading && <ArrowRight size={17} />}
       </button>
+
+      <p className="login-switch">
+        New here? <Link href="/signup">Create an account</Link>
+      </p>
     </form>
   );
 }
